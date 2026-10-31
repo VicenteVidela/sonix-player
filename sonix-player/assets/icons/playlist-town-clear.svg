@@ -1,0 +1,12 @@
+<!-- clock: lucide-static 0.460.0 (ISC) + badge -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><defs><mask id="m"><rect width="24" height="24" fill="white"/><circle cx="18" cy="18" r="7" fill="black"/></mask></defs><g mask="url(#m)"><circle cx="9" cy="9" r="7"/><polyline points="9 5 9 9 11.5 10.5"/></g><g transform="translate(12 12) scale(0.5)" stroke-width="3.4">
+  <circle cx="12" cy="12" r="4" />
+  <path d="M12 2v2" />
+  <path d="M12 20v2" />
+  <path d="m4.93 4.93 1.41 1.41" />
+  <path d="m17.66 17.66 1.41 1.41" />
+  <path d="M2 12h2" />
+  <path d="M20 12h2" />
+  <path d="m6.34 17.66-1.41 1.41" />
+  <path d="m19.07 4.93-1.41 1.41" />
+</g></svg>

@@ -1,0 +1,7 @@
+<!-- clock: lucide-static 0.460.0 (ISC) + badge -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><defs><mask id="m"><rect width="24" height="24" fill="white"/><circle cx="18" cy="18" r="7" fill="black"/></mask></defs><g mask="url(#m)"><circle cx="9" cy="9" r="7"/><polyline points="9 5 9 9 11.5 10.5"/></g><g transform="translate(12 12) scale(0.5)" stroke-width="3.4">
+  <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+  <path d="M16 14v6" />
+  <path d="M8 14v6" />
+  <path d="M12 16v6" />
+</g></svg>

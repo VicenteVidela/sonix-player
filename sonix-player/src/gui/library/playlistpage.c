@@ -591,13 +591,57 @@ static void tidal_playlists_ready_async(void *user) {
 
 static void tidal_playlists_changed(void) { gui_post(tidal_playlists_ready_async, NULL); }
 
+// Meloetta: Vicho's playlists each get a glyph of their own, matched on the
+// name's letters and digits alone, so "Velvet Room" and "velvet-room" are the
+// same playlist. Anything else keeps the music list.
+static const lv_image_dsc_t *playlist_glyph(const char *name) {
+	static const struct {
+		const char *key;
+		const lv_image_dsc_t *icon;
+	} GLYPHS[] = {
+		{"24hoursintown", &icon_playlist_town},
+		{"24hoursintownclearskies", &icon_playlist_town_clear},
+		{"24hoursintownrainyday", &icon_playlist_town_rain},
+		{"24hoursintownsnowday", &icon_playlist_town_snow},
+		{"bedtime", &icon_playlist_bed},
+		{"deadlinemode", &icon_playlist_deadline},
+		{"determination", &icon_playlist_dog},
+		{"finalbossenergy", &icon_playlist_boss},
+		{"justchilling", &icon_playlist_chill},
+		{"lofifeel", &icon_playlist_lofi},
+		{"morningwakeup", &icon_playlist_morning},
+		{"rainyevening", &icon_playlist_rainy},
+		{"relaxing", &icon_playlist_relax},
+		{"robotmasters", &icon_playlist_robot},
+		{"velvetroom", &icon_playlist_velvet},
+	};
+
+	char key[64];
+	size_t n = 0;
+	for (const char *c = name; *c && n < sizeof(key) - 1; c++) {
+		if ((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9')) {
+			key[n++] = *c;
+		} else if (*c >= 'A' && *c <= 'Z') {
+			key[n++] = (char)(*c - 'A' + 'a');
+		}
+	}
+	key[n] = '\0';
+
+	for (size_t i = 0; i < sizeof(GLYPHS) / sizeof(GLYPHS[0]); i++) {
+		if (strcmp(key, GLYPHS[i].key) == 0) {
+			return GLYPHS[i].icon;
+		}
+	}
+	return &icon_list_music;
+}
+
 static bool collect_row_cb(const char *name, void *user) {
 	int *count = user;
 
 	char subtitle[48];
 	int tracks = playlists_count_tracks(name);
 	snprintf(subtitle, sizeof(subtitle), tr(tracks == 1 ? "playlist_track_2" : "playlist_tracks"), tracks);
-	add_row(name, subtitle, &icon_list_music, 0, NULL);
+	add_row(name, subtitle, playlist_glyph(name), 0, NULL);
 
 	(*count)++;
 	return true;

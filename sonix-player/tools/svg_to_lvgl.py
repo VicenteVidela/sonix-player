@@ -146,6 +146,24 @@ ICONS = [
     ("circle-play.svg", "circle_play", 34),
     ("ellipsis-vertical.svg", "ellipsis_vertical", 30),
     ("list-music.svg", "list_music", 34),
+    # Meloetta: a glyph of its own for each of Vicho's playlists, by name
+    # (playlistpage.c). Lucide, except the clock-and-weather pairs and the
+    # Annoying Dog, drawn for the fork.
+    ("playlist-town.svg", "playlist_town", 34),
+    ("playlist-town-clear.svg", "playlist_town_clear", 34),
+    ("playlist-town-rain.svg", "playlist_town_rain", 34),
+    ("playlist-town-snow.svg", "playlist_town_snow", 34),
+    ("playlist-bed.svg", "playlist_bed", 34),
+    ("playlist-deadline.svg", "playlist_deadline", 34),
+    ("playlist-dog.svg", "playlist_dog", 34),
+    ("playlist-boss.svg", "playlist_boss", 34),
+    ("playlist-chill.svg", "playlist_chill", 34),
+    ("playlist-lofi.svg", "playlist_lofi", 34),
+    ("playlist-morning.svg", "playlist_morning", 34),
+    ("playlist-rainy.svg", "playlist_rainy", 34),
+    ("playlist-relax.svg", "playlist_relax", 34),
+    ("playlist-robot.svg", "playlist_robot", 34),
+    ("playlist-velvet.svg", "playlist_velvet", 34),
     # Selection mode on the library lists and the file browser: its corner
     # buttons that add the chosen rows to a playlist, to the favourites and to
     # the queue, and inside a playlist or the favourites take them out.
