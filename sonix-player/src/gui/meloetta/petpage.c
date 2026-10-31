@@ -463,8 +463,9 @@ void petpage_init(gui_config_t *cfg) {
 	lv_obj_t *page = plain(petpage_screen);
 	lv_obj_set_pos(page, cfg->padding, top);
 	lv_obj_set_size(page, width, (int32_t)cfg->screen_height - top);
-	lv_obj_set_scrollable(page, true);
-	lv_obj_set_scroll_dir(page, LV_DIR_VER);
+	// Everything fits on one screen (Vicho: no scrollbar for a pixel of
+	// overflow): the pet takes whatever height the rest leaves.
+	lv_obj_set_scrollable(page, false);
 	lv_obj_set_style_pad_bottom(page, cfg->padding, 0);
 	lv_obj_set_style_pad_row(page, 10, 0);
 	lv_obj_set_flex_flow(page, LV_FLEX_FLOW_COLUMN);
@@ -474,7 +475,9 @@ void petpage_init(gui_config_t *cfg) {
 	stage_label = label(page, &font_ui_18, true);
 
 	sprite = plain(page);
-	lv_obj_set_size(sprite, width, (int32_t)cfg->screen_height * 2 / 5);
+	lv_obj_set_width(sprite, width);
+	lv_obj_set_flex_grow(sprite, 1);
+	lv_obj_set_style_min_height(sprite, 140, 0);
 	lv_obj_set_clickable(sprite, true); // a tap is a pat
 	lv_obj_add_event_cb(sprite, sprite_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
 	lv_obj_add_event_cb(sprite, pat_cb, LV_EVENT_CLICKED, NULL);
