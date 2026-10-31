@@ -10,6 +10,8 @@
 #include "src/gui/nowplaying/coverloader.h"
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/meloetta/clockface.h"
+#include "src/gui/meloetta/clockspage.h"
+#include "src/system/core/lang.h"
 #include "src/gui/shell/clocklabel.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/nowplaying/player.h"
@@ -41,6 +43,33 @@ static lv_timer_t *clock_timer;
 static lv_obj_t *clock_face; // the Clock source: the dial, instead of picture and strip
 static lv_obj_t *clock_group; // the dial and, under it, what is playing
 static lv_obj_t *mini_row, *mini_art_box, *mini_art, *mini_title, *mini_artist;
+static lv_obj_t *timer_line; // Meloetta: a running Clocks timer, under the dial
+
+// Meloetta: the page underneath, hidden while the screensaver covers it.
+// A wake repaints the whole screen bottom layer first, and Now Playing (a
+// full-screen blurred backdrop) takes long enough to draw that the panel could
+// show it for a frame before the screensaver landed on top: the flicker on
+// lock and unlock, and now and then when the page redrew under it. Hidden, it
+// costs nothing to draw and there is nothing to flash. Shown again the moment
+// a swipe starts uncovering it.
+static lv_obj_t *covered_screen;
+static void cover_screen(void) {
+	lv_obj_t *scr = lv_screen_active();
+	if (covered_screen && covered_screen != scr) {
+		lv_obj_set_hidden(covered_screen, false);
+		covered_screen = NULL;
+	}
+	if (scr && !covered_screen && !lv_obj_is_hidden(scr)) {
+		lv_obj_set_hidden(scr, true);
+		covered_screen = scr;
+	}
+}
+static void uncover_screen(void) {
+	if (covered_screen) {
+		lv_obj_set_hidden(covered_screen, false);
+		covered_screen = NULL;
+	}
+}
 #define MINI_ART 72 // the thumbnail beside the title, in pixels
 // The Clock source shows the status bar over it, white on the black, and
 // gives the bar back as it found it when it goes.
@@ -225,6 +254,17 @@ static void refresh_clock(void) {
 	clocklabel_refresh(clock_label);
 	if (source == SCREENSAVER_SOURCE_CLOCK) {
 		clockface_refresh(clock_face);
+		// Meloetta: the Clocks timer, if one is going. Faded rather than
+		// hidden, so the dial does not jump when it starts or ends.
+		char left[24], line[64];
+		bool paused = false;
+		if (timer_line && clockspage_timer_text(left, sizeof(left), &paused)) {
+			snprintf(line, sizeof(line), paused ? "%s  %s  ||" : "%s  %s", tr("clocks_timer"), left);
+			lv_label_set_text(timer_line, line);
+			lv_obj_set_style_opa(timer_line, LV_OPA_COVER, 0);
+		} else if (timer_line) {
+			lv_obj_set_style_opa(timer_line, LV_OPA_TRANSP, 0);
+		}
 	}
 }
 
@@ -478,12 +518,14 @@ void screensaver_show(void) {
 	if (source == SCREENSAVER_SOURCE_CLOCK) {
 		borrow_bar();
 	}
+	cover_screen();
 	lv_timer_resume(clock_timer);
 }
 
 // Everything that has to happen once it is really gone, whether it was
 // dismissed by a tap, by a finished swipe, or by switching the option off.
 static void finish_hide(void) {
+	uncover_screen();
 	lv_obj_set_hidden(saver, true);
 	return_bar();
 	lv_obj_set_y(saver, 0);
@@ -516,6 +558,7 @@ static void slide_done_cb(lv_anim_t *a) {
 		finish_hide();
 	} else {
 		lv_obj_set_y(saver, 0); // exactly home, whatever the last frame did
+		cover_screen(); // fell back: covered again
 	}
 }
 
@@ -552,6 +595,7 @@ bool screensaver_prepare(void) {
 			promote_next();
 		}
 		refresh_content();
+		cover_screen(); // the page may have changed under it
 	} else {
 		screensaver_show(); // collects and promotes on its way through
 	}
@@ -592,6 +636,7 @@ void screensaver_hide(void) {
 	if (!saver || !screensaver_is_visible()) {
 		return;
 	}
+	uncover_screen(); // it slides away over the page
 	slide_to(-screen_h);
 }
 
@@ -630,6 +675,7 @@ static void drag_cb(lv_event_t *e) {
 				return; // not (yet) an upward drag
 			}
 			engaged = true;
+			uncover_screen(); // the page shows as the finger lifts the screensaver
 		}
 		// Only upward: dragging down does not pull it off the bottom.
 		lv_obj_set_y(saver, dy < 0 ? dy : 0);
@@ -779,6 +825,13 @@ void screensaver_init(gui_config_t *cfg) {
 	// The dial the Clocks page has, the same size, and the two a little above
 	// the middle, clear of the chevron.
 	clock_face = clockface_create(clock_group, screen_w * 3 / 4, false);
+
+	// Meloetta: the running timer, between the dial and what is playing.
+	timer_line = lv_label_create(clock_group);
+	lv_obj_set_style_text_font(timer_line, &font_ui_32, 0);
+	lv_obj_set_style_text_color(timer_line, lv_color_white(), 0);
+	lv_obj_set_style_opa(timer_line, LV_OPA_TRANSP, 0);
+	lv_label_set_text(timer_line, "0:00");
 
 	mini_row = lv_obj_create(clock_group);
 	lv_obj_set_size(mini_row, screen_w - 2 * (cfg->padding + 18), LV_SIZE_CONTENT);

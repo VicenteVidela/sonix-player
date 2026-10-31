@@ -64,6 +64,20 @@ static int64_t now_ms(void) {
 	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
+static void format_ms(char *out, size_t size, int64_t ms, bool tenths);
+
+bool clockspage_timer_text(char *out, size_t size, bool *paused) {
+	bool part_way = !timer_running && !timer_done && timer_left < timer_secs * 1000LL;
+	if (!timer_running && !part_way) {
+		return false;
+	}
+	format_ms(out, size, timer_running ? timer_end - now_ms() : timer_left, false);
+	if (paused) {
+		*paused = part_way;
+	}
+	return true;
+}
+
 // "4:05", "1:04:05"; with tenths, "4:05.3".
 static void format_ms(char *out, size_t size, int64_t ms, bool tenths) {
 	if (ms < 0) {

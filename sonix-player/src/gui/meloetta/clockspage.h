@@ -19,4 +19,9 @@ extern lv_obj_t *clockspage_screen;
 
 void clockspage_init(gui_config_t *cfg);
 
+// Meloetta: the timer as text for the screensaver, "4:05" while it runs.
+// Returns false when no timer is set going (idle, or done). *paused is true
+// for one stopped part way.
+bool clockspage_timer_text(char *out, size_t size, bool *paused);
+
 #endif /* CLOCKSPAGE_H */
