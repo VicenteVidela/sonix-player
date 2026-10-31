@@ -21,6 +21,7 @@ static lv_obj_t *palette_pills[5];
 static lv_obj_t *shader_pills[4];
 static lv_obj_t *correction_switch;
 static lv_obj_t *bootrom_switch;
+static lv_obj_t *sound_switch;
 
 static const char *const PALETTE_NAMES[5] = {
 	"gearboy_palette_original", "gearboy_palette_sharp", "gearboy_palette_bw", "gearboy_palette_autumn", "gearboy_palette_soft",
@@ -81,6 +82,13 @@ static void bootrom_toggle_cb(lv_event_t *e) {
 	// No refresh: the boot ROMs are only consulted when a game starts.
 }
 
+static void sound_toggle_cb(lv_event_t *e) {
+	(void)e;
+	config_set_int("gearboy", "sound", lv_obj_has_state(sound_switch, LV_STATE_CHECKED) ? 1 : 0);
+	config_save();
+	// Read when a game starts: the PCM is taken (or left alone) right then.
+}
+
 static lv_obj_t *make_pill(lv_obj_t *parent, const char *text, lv_event_cb_t cb, int value) {
 	lv_obj_t *btn = lv_btn_create(parent);
 	lv_obj_set_size(btn, LV_SIZE_CONTENT, 60);
@@ -134,6 +142,18 @@ static lv_obj_t *make_pill_card(lv_obj_t *parent, const char *title_tag) {
 void gearboysettings_init(gui_config_t *cfg) {
 	gearboysettings_screen = lv_obj_create(NULL);
 	lv_obj_t *container = settingsrow_page(gearboysettings_screen, cfg, "gearboy_settings");
+
+	// Meloetta: game sound off = silent game over your music.
+	settingsrow_toggle(container, "gearboy_game_sound", &sound_switch, sound_toggle_cb);
+	if (config_get_int("gearboy", "sound", 1) != 0) {
+		lv_obj_add_state(sound_switch, LV_STATE_CHECKED);
+	}
+	lv_obj_t *sound_note = lv_label_create(container);
+	lv_label_set_long_mode(sound_note, LV_LABEL_LONG_WRAP);
+	lv_obj_set_width(sound_note, lv_pct(100));
+	lv_obj_add_style(sound_note, &theme_style_text_dim, 0);
+	lv_obj_set_style_text_font(sound_note, &font_ui_18, 0);
+	lv_label_set_text(sound_note, tr("gearboy_game_sound_note"));
 
 	// Palette: applies to original Game Boy games only, since GBC titles carry
 	// their own colours.

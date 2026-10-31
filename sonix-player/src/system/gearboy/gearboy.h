@@ -89,6 +89,10 @@ void gearboy_set_keys(uint16_t mask);
 void gearboy_set_paused(bool paused);
 bool gearboy_paused(void);
 
+// Meloetta: true while a game runs WITH its own sound. With "Game sound" off
+// the game is silent and leaves the PCM to the music player.
+bool gearboy_has_sound(void);
+
 // Saves or reloads machine state. Neither call does the work: they post a
 // request that the emulator thread services between frames. The core is not
 // shareable, and reading its state from here while it runs can produce a

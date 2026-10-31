@@ -687,7 +687,7 @@ static void audiobook_seek_by(double delta, const device_state_t *state) {
 // reports playing here; the other two are written down so that it stays true if
 // they ever start to.
 static sleeptimer_kind_t sleeptimer_kind_playing(void) {
-	if (radio_is_active() || gearboy_running() || btreceiver_is_active()) {
+	if (radio_is_active() || gearboy_has_sound() || btreceiver_is_active()) {
 		return SLEEPTIMER_COUNT;
 	}
 	if (audiobook_is_playing()) {

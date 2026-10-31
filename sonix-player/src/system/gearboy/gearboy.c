@@ -26,6 +26,7 @@ uint32_t gearboy_frame_count(void) { return 0; }
 void gearboy_set_keys(uint16_t mask) { (void)mask; }
 void gearboy_set_paused(bool paused) { (void)paused; }
 bool gearboy_paused(void) { return false; }
+bool gearboy_has_sound(void) { return false; }
 void gearboy_request_savestate(void) {}
 void gearboy_request_loadstate(void) {}
 int gearboy_take_state_result(void) { return 0; }
@@ -35,6 +36,7 @@ void gearboy_refresh_video_settings(void) {}
 
 #include <pthread.h>
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -109,6 +111,9 @@ static volatile int gb_ready_index = -1;
 static volatile uint32_t frame_count;
 static volatile uint16_t key_mask;
 static volatile bool paused_flag;
+// Meloetta: read once per game from [gearboy] sound. Off = no PCM, the music
+// keeps playing, and the loop paces itself on the monotonic clock.
+static volatile bool sound_on = true;
 
 // Requests from the in-game menu and their outcome. Plain bools and an int
 // written by one thread and read by the other: neither can observe a half
@@ -199,6 +204,32 @@ bool gearboy_present(void) {
 uint32_t gearboy_frame_count(void) { return frame_count; }
 void gearboy_set_keys(uint16_t mask) { key_mask = mask; }
 bool gearboy_paused(void) { return paused_flag; }
+bool gearboy_has_sound(void) { return running_flag && sound_on; }
+
+// Meloetta: one Game Boy frame, 70224 cycles at 4194304 Hz = 16.742706 ms.
+// Without a PCM to block on, sleep to absolute deadlines so the game keeps
+// its real speed instead of drifting on a flat usleep.
+#define GB_FRAME_NS 16742706L
+static struct timespec pace_next;
+static void pace_reset(void) { clock_gettime(CLOCK_MONOTONIC, &pace_next); }
+static void pace_frame(void) {
+	pace_next.tv_nsec += GB_FRAME_NS;
+	while (pace_next.tv_nsec >= 1000000000L) {
+		pace_next.tv_nsec -= 1000000000L;
+		pace_next.tv_sec++;
+	}
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	// More than 100 ms behind (a stall, a long pause): start over from now
+	// rather than fast-forwarding to catch up.
+	long behind_ms = (long)(now.tv_sec - pace_next.tv_sec) * 1000 + (now.tv_nsec - pace_next.tv_nsec) / 1000000;
+	if (behind_ms > 100) {
+		pace_next = now;
+		return;
+	}
+	while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &pace_next, NULL) != 0) {
+	}
+}
 
 void gearboy_set_paused(bool paused) {
 	if (paused) {
@@ -403,10 +434,13 @@ static void *emu_worker(void *unused) {
 	// If the PCM does not open the game still runs, silently: a mute game beats
 	// a game that will not start. Without it there is no clock either, so the
 	// loop has to pace itself.
-	bool have_audio = audio_external_begin_latency(SAMPLE_RATE, 2, 16, AUDIO_BUFFER_MS);
-	if (!have_audio) {
+	bool have_audio = sound_on && audio_external_begin_latency(SAMPLE_RATE, 2, 16, AUDIO_BUFFER_MS);
+	if (!sound_on) {
+		printf("gearboy: game sound off; the music keeps the PCM\n");
+	} else if (!have_audio) {
 		fprintf(stderr, "gearboy: no audio; playing silently\n");
 	}
+	pace_reset();
 
 	while (!stop_flag) {
 		// Video settings changed by the page are applied here, between frames,
@@ -445,7 +479,7 @@ static void *emu_worker(void *unused) {
 				memset(audio_buf, 0, (size_t)PAUSE_FRAMES * 2 * sizeof(*audio_buf));
 				audio_external_write(audio_buf, PAUSE_FRAMES);
 			} else {
-				usleep(16000);
+				pace_frame();
 			}
 			continue;
 		}
@@ -462,9 +496,8 @@ static void *emu_worker(void *unused) {
 			// what paces everything else.
 			audio_external_write(audio_buf, samples / 2);
 		} else if (!have_audio) {
-			// No PCM, no clock. A flat 16 ms is not the exact 16.743, but with
-			// no sound to stay in step with, nobody hears the difference.
-			usleep(16000);
+			// No PCM, no clock: pace on the monotonic clock at the real 16.743.
+			pace_frame();
 		}
 	}
 
@@ -499,9 +532,13 @@ bool gearboy_start(const char *rom_path_in, const char *title_in) {
 		thread_live = false;
 	}
 
-	// The PCM takes a single writer, and music under a game is not wanted
-	// anyway: the game brings its own audio.
-	audio_stop();
+	// The PCM takes a single writer. With game sound on the music stops, as
+	// upstream does; with it off (Meloetta) the game stays silent and the
+	// music keeps playing.
+	sound_on = config_get_int("gearboy", "sound", 1) != 0;
+	if (sound_on) {
+		audio_stop();
+	}
 
 	if (!screen) {
 		screen = calloc(1, (size_t)GEARBOY_SCREEN_W * GEARBOY_SCREEN_H * 2);
