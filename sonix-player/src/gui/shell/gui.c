@@ -38,10 +38,10 @@
 #include "src/gui/gearboy/gearboypage.h"
 #include "src/gui/gearboy/gearboysettings.h"
 #include "src/gui/flappybird/flappybird.h"
-#include "src/gui/meloetta/meloettapage.h"
 #include "src/gui/meloetta/clockspage.h"
 #include "src/gui/meloetta/meditationpage.h"
 #include "src/gui/meloetta/moonpage.h"
+#include "src/gui/meloetta/petpage.h"
 #include "src/gui/meloetta/weatherpage.h"
 #include "src/gui/gearboy/gearboyplay.h"
 #include "src/gui/shell/lowbattery.h"
@@ -641,11 +641,11 @@ void gui_init(gui_config_t *cfg) {
 	gearboyplay_screen = lv_obj_create(NULL);
 	flappybird_screen = lv_obj_create(NULL);
 	metronomepage_screen = lv_obj_create(NULL);
-	meloettapage_screen = lv_obj_create(NULL);
 	moonpage_screen = lv_obj_create(NULL);
 	weatherpage_screen = lv_obj_create(NULL);
 	clockspage_screen = lv_obj_create(NULL);
 	meditationpage_screen = lv_obj_create(NULL);
+	petpage_screen = lv_obj_create(NULL);
 
 	// Persistent topbar that stays above every screen.
 	topbar_init(cfg);
@@ -697,7 +697,7 @@ void gui_init(gui_config_t *cfg) {
 	weatherpage_init(cfg);
 	clockspage_init(cfg);
 	meditationpage_init(cfg);
-	meloettapage_init(cfg); // after its pages: its tiles point at them
+	petpage_init(cfg);
 	// before morepage: the books tile opens the shelf, and the shelf opens the
 	// reader.
 	ebookreader_init(cfg);
@@ -778,8 +778,8 @@ void gui_init(gui_config_t *cfg) {
 		btsettings_screen, btaudio_screen,	 airpodspage_screen, airplay_screen,   streaming_screen,
 		radiopage_screen,  radiolist_screen, radiosearch_screen,
 		dlna_screen,	   sonixlink_screen,	 morepage_screen,	  gearboypage_screen, metronomepage_screen,
-		meloettapage_screen, moonpage_screen, weatherpage_screen, clockspage_screen,
-		meditationpage_screen,
+		moonpage_screen, weatherpage_screen, clockspage_screen,
+		meditationpage_screen, petpage_screen,
 	};
 	for (size_t i = 0; i < sizeof(back_swipe_screens) / sizeof(back_swipe_screens[0]); i++) {
 		switcher_attach_back_gesture(back_swipe_screens[i]);

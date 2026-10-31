@@ -6,6 +6,7 @@
 
 #include "src/system/lastfm/lastfm.h"
 #include "src/system/library/library.h"
+#include "src/system/meloetta/pet.h"
 
 // A longer step between two calls than this is the device having been asleep,
 // not listening.
@@ -67,5 +68,6 @@ void playcount_note_playback(const playcount_playback_t *now) {
 	if (!play.counted && !play.skip && lastfm_play_counts(now->duration, play.listened)) {
 		play.counted = true;
 		library_note_play(play.file);
+		pet_note_play(play.file, NULL); // the Meloetta fork: every counted play feeds the pet
 	}
 }
