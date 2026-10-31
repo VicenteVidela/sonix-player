@@ -15,12 +15,15 @@
 #include "src/system/device/clock.h"
 
 // The widget's colours (main.qml), all of them.
-#define BLUE 0x1F96FA
-#define HUB 0x35A7FF
-#define SECOND_BLUE 0x4E8FF5
-#define MOON_LIT 0xEBE854
-#define MOON_DARK 0x1C1A06
-#define FACE 0x0D0D0E
+// Persona 3 blue on Dark and Light. On the Meloetta theme the same dial wears
+// Meloetta's colours: hair green for the rings, spikes and numerals, eye cyan for
+// the hub and second hand, a cream moon, and a face of their dark body taupe.
+#define BLUE (theme_is_meloetta() ? 0x8CC46A : 0x1F96FA)
+#define HUB (theme_is_meloetta() ? 0x78D0E8 : 0x35A7FF)
+#define SECOND_BLUE (theme_is_meloetta() ? 0x78D0E8 : 0x4E8FF5)
+#define MOON_LIT (theme_is_meloetta() ? 0xF4EEDC : 0xEBE854)
+#define MOON_DARK (theme_is_meloetta() ? 0x2C2626 : 0x1C1A06)
+#define FACE (theme_is_meloetta() ? 0x241F1F : 0x0D0D0E)
 #define FACE_OPA 0xA6
 #define SOUTHERN true // the player lives in Chile, like KingGroot
 
@@ -196,7 +199,8 @@ static void moon(const dial_t *d, face_t *f, time_t now) {
 	float mx = d->cx, my = d->cy - d->r * 0.5f, mr = d->r * 0.108f;
 	int size = (int)lroundf(mr * 2.0f);
 	float p = moon_phase(now);
-	int key = (int)lroundf(p * 1000.0f);
+	// The palette is part of the key: a theme change redraws the moon.
+	int key = (int)lroundf(p * 1000.0f) + (theme_is_meloetta() ? 100000 : 0);
 	if (size < 2) {
 		return;
 	}
