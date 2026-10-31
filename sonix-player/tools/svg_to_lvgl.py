@@ -450,6 +450,8 @@ COLOR_ICONS = [
     ("meloetta.png", "menu_meloetta", SECTION_ICON_SIZE),
     ("moon.png", "menu_moon", SECTION_ICON_SIZE),
     ("weather.png", "menu_weather", SECTION_ICON_SIZE),
+    ("clocks.png", "menu_clocks", SECTION_ICON_SIZE),
+    ("meditation.png", "menu_meditation", SECTION_ICON_SIZE),
 
     # The service badges in the player's top right corner, where the radio puts
     # its LIVE mark. They sit over the cover art, so these are the outlined

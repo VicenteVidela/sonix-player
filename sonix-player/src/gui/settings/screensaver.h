@@ -29,6 +29,7 @@ bool screensaver_get_enabled(void);
 typedef enum {
 	SCREENSAVER_SOURCE_ALBUM = 0,
 	SCREENSAVER_SOURCE_IMAGES,
+	SCREENSAVER_SOURCE_CLOCK, // the Meloetta fork: a dial and the date, no picture (clockface.h)
 } screensaver_source_t;
 
 screensaver_source_t screensaver_source(void);

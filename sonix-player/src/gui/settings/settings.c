@@ -64,6 +64,7 @@ static lv_obj_t *screensaver_switch;
 static lv_obj_t *screensaver_pills;
 static lv_obj_t *screensaver_album_pill;
 static lv_obj_t *screensaver_images_pill;
+static lv_obj_t *screensaver_clock_pill;
 static lv_obj_t *rotate_switch;
 
 static void doubletap_toggle_cb(lv_event_t *e) {
@@ -92,6 +93,7 @@ static void screensaver_refresh(void) {
 	screensaver_source_t source = screensaver_source();
 	settingsrow_pill_active(screensaver_album_pill, source == SCREENSAVER_SOURCE_ALBUM);
 	settingsrow_pill_active(screensaver_images_pill, source == SCREENSAVER_SOURCE_IMAGES);
+	settingsrow_pill_active(screensaver_clock_pill, source == SCREENSAVER_SOURCE_CLOCK);
 }
 
 static void screensaver_toggle_cb(lv_event_t *e) {
@@ -319,6 +321,8 @@ static void build_screen_page(gui_config_t *cfg) {
 		settingsrow_pill(screensaver_pills, "screensaver_source_album", SCREENSAVER_SOURCE_ALBUM, screensaver_source_cb);
 	screensaver_images_pill =
 		settingsrow_pill(screensaver_pills, "screensaver_source_images", SCREENSAVER_SOURCE_IMAGES, screensaver_source_cb);
+	screensaver_clock_pill =
+		settingsrow_pill(screensaver_pills, "screensaver_source_clock", SCREENSAVER_SOURCE_CLOCK, screensaver_source_cb);
 	screensaver_refresh();
 
 	// Upside down, for holding the player the other way up.

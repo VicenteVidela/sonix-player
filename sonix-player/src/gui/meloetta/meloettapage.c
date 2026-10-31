@@ -2,6 +2,8 @@
 
 #include "lvgl/lvgl.h"
 
+#include "src/gui/meloetta/clockspage.h"
+#include "src/gui/meloetta/meditationpage.h"
 #include "src/gui/meloetta/moonpage.h"
 #include "src/gui/meloetta/weatherpage.h"
 #include "src/gui/shell/gridpage.h"
@@ -14,6 +16,8 @@ void meloettapage_init(gui_config_t *cfg) {
 	const grid_entry_t entries[] = {
 		{"moon", &icon_menu_moon, &moonpage_screen, NULL},
 		{"weather", &icon_menu_weather, &weatherpage_screen, NULL},
+		{"clocks", &icon_menu_clocks, &clockspage_screen, NULL},
+		{"meditation", &icon_menu_meditation, &meditationpage_screen, NULL},
 	};
 
 	// The More page's two by three, so the tiles are the size of its tiles.

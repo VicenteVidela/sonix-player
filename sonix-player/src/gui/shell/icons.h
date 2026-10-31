@@ -265,6 +265,8 @@ extern const lv_image_dsc_t icon_menu_metronome;
 extern const lv_image_dsc_t icon_menu_meloetta;
 extern const lv_image_dsc_t icon_menu_moon;
 extern const lv_image_dsc_t icon_menu_weather;
+extern const lv_image_dsc_t icon_menu_clocks;
+extern const lv_image_dsc_t icon_menu_meditation;
 extern const lv_image_dsc_t icon_qobuz_badge;
 extern const lv_image_dsc_t icon_tidal_badge;
 extern const lv_image_dsc_t icon_podcast_badge;

@@ -9,11 +9,13 @@
 #include "src/gui/nowplaying/cover.h"
 #include "src/gui/nowplaying/coverloader.h"
 #include "src/gui/fonts/fonts.h"
+#include "src/gui/meloetta/clockface.h"
 #include "src/gui/shell/clocklabel.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/nowplaying/player.h"
 #include "src/gui/shell/scrolltext.h"
 #include "src/gui/shell/theme.h"
+#include "src/gui/shell/topbar.h"
 #include "src/system/device/clock.h"
 #include "src/system/core/config.h"
 #include "src/system/playback/device_state.h"
@@ -36,6 +38,13 @@ static lv_obj_t *title_label;
 static lv_obj_t *artist_label;
 static lv_obj_t *clock_label;
 static lv_timer_t *clock_timer;
+static lv_obj_t *clock_face; // the Clock source: the dial, instead of picture and strip
+static lv_obj_t *clock_group; // the dial and, under it, what is playing
+static lv_obj_t *mini_row, *mini_art_box, *mini_art, *mini_title, *mini_artist;
+#define MINI_ART 72 // the thumbnail beside the title, in pixels
+// The Clock source shows the status bar over it, white on the black, and
+// gives the bar back as it found it when it goes.
+static bool bar_borrowed, bar_was_hidden, bar_was_over_art;
 
 static bool enabled;
 static int screen_w, screen_h;
@@ -115,7 +124,7 @@ static void request_next(void);
 static void drop_next(void);
 
 void screensaver_set_source(screensaver_source_t chosen) {
-	source = chosen == SCREENSAVER_SOURCE_IMAGES ? SCREENSAVER_SOURCE_IMAGES : SCREENSAVER_SOURCE_ALBUM;
+	source = chosen == SCREENSAVER_SOURCE_IMAGES || chosen == SCREENSAVER_SOURCE_CLOCK ? chosen : SCREENSAVER_SOURCE_ALBUM;
 	config_set_int("screen", "screensaver_source", (int)source);
 	config_save();
 	if (source == SCREENSAVER_SOURCE_IMAGES) {
@@ -212,7 +221,12 @@ void screensaver_set_enabled(bool on) {
 // what it shows
 // ---------------------------------------------------------------------------
 
-static void refresh_clock(void) { clocklabel_refresh(clock_label); }
+static void refresh_clock(void) {
+	clocklabel_refresh(clock_label);
+	if (source == SCREENSAVER_SOURCE_CLOCK) {
+		clockface_refresh(clock_face);
+	}
+}
 
 // What refresh_content() last drew, so the tick below can tell an idle moment
 // from a track that changed while the screensaver was up.
@@ -344,6 +358,36 @@ static void refresh_content(void) {
 	// title -- it just must not change the picture.
 	shown_cover = player_cover_image();
 
+	// The Clock source shows the dial alone: no picture, no track.
+	bool clock_only = source == SCREENSAVER_SOURCE_CLOCK;
+	lv_obj_set_hidden(cover_box, clock_only);
+	lv_obj_set_hidden(info_strip, clock_only);
+	lv_obj_set_hidden(clock_group, !clock_only);
+	if (clock_only) {
+		clockface_refresh(clock_face);
+		// Under the dial, what is playing: the same title and artist as the
+		// strip, and the cover shrunk to a thumbnail, cropped square.
+		bool any = state.live || state.current_file[0];
+		// Faded out rather than hidden, so the dial stays where it is.
+		lv_obj_set_style_opa(mini_row, any ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+		if (any) {
+			const char *slash = strrchr(state.current_file, (int)0x2f);
+			scrolltext_set(mini_title, state.live || state.metadata.title[0] ? state.metadata.title
+														: (slash ? slash + 1 : state.current_file));
+			scrolltext_set(mini_artist, state.live ? state.metadata.artist : metadata_shown_artist(&state.metadata));
+			const lv_image_dsc_t *art = shown_cover;
+			lv_obj_set_hidden(mini_art_box, !art);
+			if (art) {
+				lv_image_set_src(mini_art, art);
+				int32_t zw = 256 * MINI_ART / (int32_t)art->header.w, zh = 256 * MINI_ART / (int32_t)art->header.h;
+				lv_image_set_scale(mini_art, zw > zh ? zw : zh);
+			} else {
+				lv_image_set_src(mini_art, NULL);
+			}
+		}
+		return;
+	}
+
 	if (source == SCREENSAVER_SOURCE_IMAGES) {
 		draw_from_folder();
 		refresh_clock();
@@ -397,6 +441,28 @@ static void refresh_content(void) {
 
 static void anim_y_cb(void *obj, int32_t v);
 
+static void borrow_bar(void) {
+	bar_borrowed = true;
+	bar_was_hidden = topbar_is_hidden();
+	bar_was_over_art = topbar_is_over_artwork();
+	topbar_set_hidden(false);
+	topbar_set_over_artwork(true, false);
+	topbar_bring_to_front();
+}
+
+static void return_bar(void) {
+	if (!bar_borrowed) {
+		return;
+	}
+	bar_borrowed = false;
+	if (!bar_was_over_art) {
+		topbar_set_over_artwork(false, false);
+	}
+	if (bar_was_hidden) {
+		topbar_set_hidden(true);
+	}
+}
+
 void screensaver_show(void) {
 	if (!saver || !enabled || screensaver_is_visible()) {
 		return;
@@ -409,6 +475,9 @@ void screensaver_show(void) {
 	lv_obj_set_y(saver, 0);
 	lv_obj_set_hidden(saver, false);
 	lv_obj_move_foreground(saver);
+	if (source == SCREENSAVER_SOURCE_CLOCK) {
+		borrow_bar();
+	}
 	lv_timer_resume(clock_timer);
 }
 
@@ -416,6 +485,7 @@ void screensaver_show(void) {
 // dismissed by a tap, by a finished swipe, or by switching the option off.
 static void finish_hide(void) {
 	lv_obj_set_hidden(saver, true);
+	return_bar();
 	lv_obj_set_y(saver, 0);
 	lv_timer_pause(clock_timer);
 	// Let go of the player's pixels: it frees them at the next track change,
@@ -423,6 +493,7 @@ static void finish_hide(void) {
 	// here goes too -- about a megabyte, and the device is in use again, which
 	// is exactly when that megabyte is worth having back.
 	lv_image_set_src(cover_img, NULL);
+	lv_image_set_src(mini_art, NULL);
 	lv_obj_set_style_bg_image_src(info_strip, NULL, 0);
 	drop_image();
 	// The one being prepared goes too. It is another megabyte, the device is in
@@ -509,6 +580,7 @@ void screensaver_release_artwork(void) {
 	// Whatever happens next, nothing here may still be pointing at the
 	// player's buffers when it frees them.
 	lv_image_set_src(cover_img, NULL);
+	lv_image_set_src(mini_art, NULL);
 	lv_obj_set_hidden(cover_img, true);
 	lv_obj_set_hidden(cover_placeholder, false);
 	lv_obj_set_style_bg_image_src(info_strip, NULL, 0);
@@ -583,9 +655,10 @@ void screensaver_init(gui_config_t *cfg) {
 
 	screensaver_set_card_root(cfg->sd_root_path);
 	enabled = config_get_bool("screen", "screensaver", false);
-	source = config_get_int("screen", "screensaver_source", SCREENSAVER_SOURCE_ALBUM) == SCREENSAVER_SOURCE_IMAGES
-				 ? SCREENSAVER_SOURCE_IMAGES
-				 : SCREENSAVER_SOURCE_ALBUM;
+	source = (screensaver_source_t)config_get_int("screen", "screensaver_source", SCREENSAVER_SOURCE_ALBUM);
+	if (source != SCREENSAVER_SOURCE_IMAGES && source != SCREENSAVER_SOURCE_CLOCK) {
+		source = SCREENSAVER_SOURCE_ALBUM;
+	}
 	cover_box_h = screen_h - strip_h;
 
 	saver = lv_obj_create(lv_layer_top());
@@ -689,6 +762,73 @@ void screensaver_init(gui_config_t *cfg) {
 	lv_obj_set_style_image_recolor_opa(chevron, LV_OPA_COVER, 0);
 	lv_obj_set_style_image_opa(chevron, LV_OPA_70, 0);
 	lv_obj_center(chevron);
+
+	// The Clock source: the Persona 3 dial alone, a little above the middle,
+	// clear of the chevron.
+	clock_group = lv_obj_create(saver);
+	lv_obj_set_size(clock_group, screen_w, LV_SIZE_CONTENT);
+	lv_obj_set_style_bg_opa(clock_group, 0, 0);
+	lv_obj_set_style_border_width(clock_group, 0, 0);
+	lv_obj_set_style_pad_all(clock_group, 0, 0);
+	lv_obj_set_style_pad_row(clock_group, 34, 0);
+	lv_obj_set_scrollable(clock_group, false);
+	lv_obj_set_clickable(clock_group, false);
+	lv_obj_set_event_bubble(clock_group, true);
+	lv_obj_set_flex_flow(clock_group, LV_FLEX_FLOW_COLUMN);
+	lv_obj_set_flex_align(clock_group, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+	// The dial the Clocks page has, the same size, and the two a little above
+	// the middle, clear of the chevron.
+	clock_face = clockface_create(clock_group, screen_w * 3 / 4, false);
+
+	mini_row = lv_obj_create(clock_group);
+	lv_obj_set_size(mini_row, screen_w - 2 * (cfg->padding + 18), LV_SIZE_CONTENT);
+	lv_obj_set_style_bg_opa(mini_row, 0, 0);
+	lv_obj_set_style_border_width(mini_row, 0, 0);
+	lv_obj_set_style_pad_all(mini_row, 0, 0);
+	lv_obj_set_style_pad_column(mini_row, 16, 0);
+	lv_obj_set_scrollable(mini_row, false);
+	lv_obj_set_clickable(mini_row, false);
+	lv_obj_set_event_bubble(mini_row, true);
+	lv_obj_set_flex_flow(mini_row, LV_FLEX_FLOW_ROW);
+	lv_obj_set_flex_align(mini_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+	mini_art_box = lv_obj_create(mini_row);
+	lv_obj_set_size(mini_art_box, MINI_ART, MINI_ART);
+	lv_obj_set_style_bg_color(mini_art_box, lv_color_make(28, 28, 32), 0);
+	lv_obj_set_style_bg_opa(mini_art_box, LV_OPA_COVER, 0);
+	lv_obj_set_style_border_width(mini_art_box, 0, 0);
+	lv_obj_set_style_radius(mini_art_box, 10, 0);
+	lv_obj_set_style_clip_corner(mini_art_box, true, 0);
+	lv_obj_set_style_pad_all(mini_art_box, 0, 0);
+	lv_obj_set_scrollable(mini_art_box, false);
+	lv_obj_set_clickable(mini_art_box, false);
+	lv_obj_set_event_bubble(mini_art_box, true);
+	mini_art = lv_image_create(mini_art_box);
+	lv_obj_center(mini_art);
+	lv_image_set_inner_align(mini_art, LV_IMAGE_ALIGN_CENTER);
+	lv_obj_t *mini_text = lv_obj_create(mini_row);
+	lv_obj_set_height(mini_text, LV_SIZE_CONTENT);
+	lv_obj_set_flex_grow(mini_text, 1);
+	lv_obj_set_style_bg_opa(mini_text, 0, 0);
+	lv_obj_set_style_border_width(mini_text, 0, 0);
+	lv_obj_set_style_pad_all(mini_text, 0, 0);
+	lv_obj_set_style_pad_row(mini_text, 4, 0);
+	lv_obj_set_scrollable(mini_text, false);
+	lv_obj_set_clickable(mini_text, false);
+	lv_obj_set_event_bubble(mini_text, true);
+	lv_obj_set_flex_flow(mini_text, LV_FLEX_FLOW_COLUMN);
+	mini_title = lv_label_create(mini_text);
+	lv_obj_set_width(mini_title, lv_pct(100));
+	lv_obj_set_style_text_font(mini_title, &font_ui_24, 0);
+	lv_obj_set_style_text_color(mini_title, lv_color_white(), 0);
+	scrolltext_apply(mini_title);
+	mini_artist = lv_label_create(mini_text);
+	lv_obj_set_width(mini_artist, lv_pct(100));
+	lv_obj_set_style_text_font(mini_artist, &font_ui_20, 0);
+	lv_obj_set_style_text_color(mini_artist, lv_color_make(170, 170, 170), 0);
+	scrolltext_apply(mini_artist);
+
+	lv_obj_align(clock_group, LV_ALIGN_CENTER, 0, -40);
+	lv_obj_set_hidden(clock_group, true);
 
 	// One second, not ten: the clock only needs a minute's resolution, but the
 	// same tick is what notices a track change, and a screensaver that shows

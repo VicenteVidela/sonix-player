@@ -62,6 +62,9 @@ void topbar_set_hidden(bool hidden);
 // the picture as it changes or slides; without, nothing at all is behind it.
 // Off gives it back the colours of the page underneath.
 void topbar_set_over_artwork(bool on, bool blur);
+// Whether the bar is laid over artwork now, so a caller that borrows the look
+// (the Clock screensaver of the Meloetta fork) can give it back as it found it.
+bool topbar_is_over_artwork(void);
 bool topbar_is_hidden(void);
 
 // Draws the bar above everything else on the top layer. The control centre

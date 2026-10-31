@@ -1,0 +1,7 @@
+bowl.ogg -- the Meloetta fork's meditation bell
+
+"Tibetan Singing Bowl hit 11inch.flac" by דג בלי מלח, Wikimedia Commons,
+https://commons.wikimedia.org/wiki/File:Tibetan_Singing_Bowl_hit_11inch.flac
+licensed CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+Changed: the strike and 2.8 seconds after it, faded out over the last 1.6, loudness lowered,
+mixed to mono, encoded as Ogg Vorbis. This file is under the same licence.

@@ -1143,6 +1143,8 @@ static void over_art_backdrop(bool blur) {
 	}
 }
 
+bool topbar_is_over_artwork(void) { return over_art; }
+
 void topbar_set_over_artwork(bool on, bool blur) {
 	if (!top_bar) {
 		return;
