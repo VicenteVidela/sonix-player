@@ -40,6 +40,7 @@
 #include "src/gui/flappybird/flappybird.h"
 #include "src/gui/meloetta/meloettapage.h"
 #include "src/gui/meloetta/moonpage.h"
+#include "src/gui/meloetta/weatherpage.h"
 #include "src/gui/gearboy/gearboyplay.h"
 #include "src/gui/shell/lowbattery.h"
 #include "src/gui/shell/main_menu.h"
@@ -640,6 +641,7 @@ void gui_init(gui_config_t *cfg) {
 	metronomepage_screen = lv_obj_create(NULL);
 	meloettapage_screen = lv_obj_create(NULL);
 	moonpage_screen = lv_obj_create(NULL);
+	weatherpage_screen = lv_obj_create(NULL);
 
 	// Persistent topbar that stays above every screen.
 	topbar_init(cfg);
@@ -688,6 +690,7 @@ void gui_init(gui_config_t *cfg) {
 	flappybird_init(cfg);
 	metronomepage_init(cfg);
 	moonpage_init(cfg);
+	weatherpage_init(cfg);
 	meloettapage_init(cfg); // after its pages: its tiles point at them
 	// before morepage: the books tile opens the shelf, and the shelf opens the
 	// reader.
@@ -769,7 +772,7 @@ void gui_init(gui_config_t *cfg) {
 		btsettings_screen, btaudio_screen,	 airpodspage_screen, airplay_screen,   streaming_screen,
 		radiopage_screen,  radiolist_screen, radiosearch_screen,
 		dlna_screen,	   sonixlink_screen,	 morepage_screen,	  gearboypage_screen, metronomepage_screen,
-		meloettapage_screen, moonpage_screen,
+		meloettapage_screen, moonpage_screen, weatherpage_screen,
 	};
 	for (size_t i = 0; i < sizeof(back_swipe_screens) / sizeof(back_swipe_screens[0]); i++) {
 		switcher_attach_back_gesture(back_swipe_screens[i]);
