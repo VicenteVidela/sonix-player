@@ -446,6 +446,9 @@ COLOR_ICONS = [
     ("ebook.png", "menu_books", SECTION_ICON_SIZE),
     ("file-explorer.png", "menu_file_explorer", SECTION_ICON_SIZE),
     ("metronome.png", "menu_metronome", SECTION_ICON_SIZE),
+    # The Meloetta fork: its tile on More, and the tiles on its own page.
+    ("meloetta.png", "menu_meloetta", SECTION_ICON_SIZE),
+    ("moon.png", "menu_moon", SECTION_ICON_SIZE),
 
     # The service badges in the player's top right corner, where the radio puts
     # its LIVE mark. They sit over the cover art, so these are the outlined

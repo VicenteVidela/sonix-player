@@ -262,6 +262,8 @@ extern const lv_image_dsc_t icon_menu_flappy_bird;
 extern const lv_image_dsc_t icon_menu_books;
 extern const lv_image_dsc_t icon_menu_file_explorer;
 extern const lv_image_dsc_t icon_menu_metronome;
+extern const lv_image_dsc_t icon_menu_meloetta;
+extern const lv_image_dsc_t icon_menu_moon;
 extern const lv_image_dsc_t icon_qobuz_badge;
 extern const lv_image_dsc_t icon_tidal_badge;
 extern const lv_image_dsc_t icon_podcast_badge;
