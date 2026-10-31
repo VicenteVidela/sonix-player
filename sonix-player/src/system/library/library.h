@@ -338,6 +338,11 @@ bool library_track_album(const char *path, char *out, size_t out_size);
 // name: what "Show album" opens.
 bool library_track_album_value(const char *path, char *out, size_t out_size);
 
+// One track by `name` on the Artists or Album artists list -- under its own
+// tag or as one of the names a tag split into: where that artist's picture is
+// looked for. False for any other list, or when nothing is indexed under it.
+bool library_artist_track(library_list_t kind, const char *name, char *out, size_t out_size);
+
 // Finds indexed tracks by file name alone -- the whole batch in one pass over
 // the table, because a name without its folders cannot use an index and would
 // otherwise cost a scan each. `cb` fires once per match with the position the

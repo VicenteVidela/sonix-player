@@ -873,18 +873,16 @@ static void row_show_glyph(panel_t *p, row_t *row) {
 	lv_obj_set_style_image_recolor_opa(row->icon, LV_OPA_COVER, 0);
 }
 
-// The plain name lists -- Artists, Album artists, Genres -- carry no icon: the
-// same glyph on every row distinguishes nothing, and without it the name gets
-// the full width. Albums keeps its icon, since there it becomes the cover art,
-// and so do tracks.
+// The plain name lists -- Genres, Years -- carry no icon: the same glyph on
+// every row distinguishes nothing, and without it the name gets the full
+// width. Albums keeps its icon, since there it becomes the cover art, and so
+// do tracks; Artists and Album artists too, for the artist's picture.
 static bool panel_shows_icons(const panel_t *p) {
 	if (p->is_tracks) {
 		// Under the album head the rows carry their track numbers instead.
 		return p->track_no == NULL;
 	}
 	switch (p->kind) {
-	case LIBRARY_LIST_ARTISTS:
-	case LIBRARY_LIST_ALBUM_ARTISTS:
 	case LIBRARY_LIST_GENRES:
 	case LIBRARY_LIST_YEARS:
 		return false;
@@ -1813,6 +1811,59 @@ static void row_bind(panel_t *p, row_t *row, int index) {
 	row_update_selection(p, row, name, path);
 }
 
+// Where an artist row's picture comes from, looked for the way Navidrome
+// looks, so the card and the server agree: a picture named after the artist in
+// an "_artists" folder above one of their tracks, else the nearest artist.jpg
+// or artist.png above it (a series folder's), else that track's own cover.
+// Once per row bound, on this thread: one indexed query and a few access()
+// calls, which the dentry cache answers after the first time.
+#define ARTIST_ART_DEPTH 4
+
+static bool artist_picture(library_list_t kind, const char *name, char *out, size_t size) {
+	char track[512];
+	if (!library_artist_track(kind, name, track, sizeof(track))) {
+		return false;
+	}
+
+	// The name becomes a file name, and a slash in one would be a folder.
+	char file[256];
+	snprintf(file, sizeof(file), "%s", name);
+	for (char *c = file; *c; c++) {
+		if (*c == '/') {
+			*c = '_';
+		}
+	}
+
+	static const char *const exts[] = {"jpg", "jpeg", "png"};
+	for (int pass = 0; pass < 2; pass++) {
+		char dir[512];
+		snprintf(dir, sizeof(dir), "%s", track);
+		for (int depth = 0; depth < ARTIST_ART_DEPTH; depth++) {
+			char *slash = strrchr(dir, '/');
+			if (!slash || slash == dir) {
+				break;
+			}
+			*slash = '\0';
+			for (size_t e = 0; e < sizeof(exts) / sizeof(exts[0]); e++) {
+				if (pass == 0) {
+					snprintf(out, size, "%s/_artists/%s.%s", dir, file, exts[e]);
+				} else {
+					snprintf(out, size, "%s/artist.%s", dir, exts[e]);
+				}
+				if (access(out, R_OK) == 0) {
+					return true;
+				}
+			}
+		}
+	}
+	snprintf(out, size, "%s", track);
+	return true;
+}
+
+static bool panel_is_artists(const panel_t *p) {
+	return !p->from_paths && (p->kind == LIBRARY_LIST_ARTISTS || p->kind == LIBRARY_LIST_ALBUM_ARTISTS);
+}
+
 // Requests artwork for the visible rows and collects what the worker has
 // finished. Same loop as the browser's thumbs_update.
 static void thumbs_update(panel_t *p) {
@@ -1839,8 +1890,9 @@ static void thumbs_update(panel_t *p) {
 			continue;
 		}
 
+		const char *name = NULL;
 		const char *source = NULL;
-		if (!row_at(p, row->index, NULL, &source)) {
+		if (!row_at(p, row->index, &name, &source)) {
 			// The list went stale under the row: the next window_update() reads
 			// it again and binds the row anew. Not "no artwork".
 			if (!p->from_paths && library_index_stale(p->ix)) {
@@ -1850,7 +1902,13 @@ static void thumbs_update(panel_t *p) {
 			row->thumb_settled = true;
 			continue;
 		}
-		if (!source) {
+		// An artist row names no file: its picture is looked for once, here,
+		// and from then on the request stands for it.
+		char art[512];
+		if (!row->thumb_requested && panel_is_artists(p)) {
+			source = artist_picture(p->kind, name, art, sizeof(art)) ? art : NULL;
+		}
+		if (!source && !row->thumb_requested) {
 			row->thumb_settled = true; // nothing to load art from
 			continue;
 		}

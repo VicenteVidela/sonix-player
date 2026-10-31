@@ -2097,6 +2097,39 @@ bool library_track_album_value(const char *path, char *out, size_t out_size) {
 	return track_album(path, true, out, out_size);
 }
 
+bool library_artist_track(library_list_t kind, const char *name, char *out, size_t out_size) {
+	if (!name || !name[0] || !out || out_size == 0) {
+		return false;
+	}
+	const char *sql;
+	if (kind == LIBRARY_LIST_ARTISTS) {
+		sql = "SELECT path FROM MEDIA_TABLE WHERE artist=?1"
+			  " UNION ALL SELECT path FROM ARTIST_LINK WHERE artist=?1 LIMIT 1";
+	} else if (kind == LIBRARY_LIST_ALBUM_ARTISTS) {
+		sql = "SELECT path FROM MEDIA_TABLE WHERE album_artist=?1"
+			  " UNION ALL SELECT path FROM ALBUM_ARTIST_LINK WHERE album_artist=?1 LIMIT 1";
+	} else {
+		return false;
+	}
+
+	pthread_mutex_lock(&db_lock);
+	bool found = false;
+	sqlite3_stmt *stmt = NULL;
+	if (db && sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_text(stmt, 1, name, -1, SQLITE_TRANSIENT);
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			const unsigned char *path = sqlite3_column_text(stmt, 0);
+			if (path && path[0]) {
+				snprintf(out, out_size, "%s", (const char *)path);
+				found = true;
+			}
+		}
+		sqlite3_finalize(stmt);
+	}
+	pthread_mutex_unlock(&db_lock);
+	return found;
+}
+
 void library_album_title(const char *value, char *out, size_t size) {
 	if (!out || size == 0) {
 		return;
