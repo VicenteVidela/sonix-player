@@ -7,6 +7,7 @@
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/meloetta/clockface.h"
 #include "src/gui/meloetta/durationpicker.h"
+#include "src/gui/nowplaying/player.h"
 #include "src/gui/shell/settingsrow.h"
 #include "src/gui/shell/tabbar.h"
 #include "src/gui/shell/theme.h"
@@ -129,6 +130,26 @@ static void show_tab(void) {
 }
 
 // ---------------------------------------------------------------------------
+// the beep, over music too: the track is paused for it and plays on after
+// ---------------------------------------------------------------------------
+
+static void resume_cb(void *user) {
+	(void)user;
+	player_interrupt_resume();
+}
+
+// On the beep's thread: the music goes back on the UI thread, where the player
+// lives.
+static void beep_done(void) { gui_post(resume_cb, NULL); }
+
+static void ring(void) {
+	bool paused = player_interrupt_pause();
+	if (!chime_beep(paused ? beep_done : NULL) && paused) {
+		player_interrupt_resume(); // no beep after all: no reason to stay paused
+	}
+}
+
+// ---------------------------------------------------------------------------
 // the tick: ends timers whether or not the page is open
 // ---------------------------------------------------------------------------
 
@@ -139,7 +160,7 @@ static void tick_cb(lv_timer_t *t) {
 		timer_running = false;
 		timer_done = true;
 		timer_left = timer_secs * 1000LL;
-		chime_beep();
+		ring();
 		if (!page_visible || tab != TAB_TIMER) {
 			toast_plain("clocks_done");
 		}

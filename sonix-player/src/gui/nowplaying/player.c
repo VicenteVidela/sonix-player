@@ -4636,6 +4636,23 @@ void player_layout_set(player_layout_t layout) {
 	update_layout(&state);
 }
 
+bool player_interrupt_pause(void) {
+	if (audio_get_status() != AUDIO_STATUS_PLAYING || radio_is_playing()) {
+		return false;
+	}
+	audio_pause();
+	apply_playback_status(AUDIO_STATUS_PAUSED);
+	return true;
+}
+
+void player_interrupt_resume(void) {
+	if (audio_get_status() != AUDIO_STATUS_PAUSED) {
+		return; // stopped, or played again by hand meanwhile
+	}
+	audio_resume();
+	apply_playback_status(AUDIO_STATUS_PLAYING);
+}
+
 void player_output_unplugged(const char *what) {
 	if (audio_get_status() != AUDIO_STATUS_PLAYING) {
 		return;

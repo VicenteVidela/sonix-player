@@ -19,6 +19,9 @@
 #define CHUNK 512
 #define BUFFER_MS 200
 #define MAX_STRIKES 4
+// Silence before every sound: Bluetooth earbuds take a moment to wake the
+// stream, and ramp it in, and would swallow the start of a short beep.
+#define LEAD_MS 300
 
 // The beep: one pair, a watch's -- beep-beep, with room between the two so
 // they are heard as two.
@@ -34,6 +37,7 @@ typedef struct {
 	long frames;
 	int copies;
 	long gap;
+	void (*done)(void); // called on the sound's thread once it has finished
 } job_t;
 
 static atomic_bool playing;
@@ -49,14 +53,15 @@ static void *play_main(void *arg) {
 	job_t *job = arg;
 	thread_set_background_level(true);
 	if (audio_external_begin_yielding(RATE, 2, 16, BUFFER_MS)) {
-		long total = job->gap * (job->copies - 1) + job->frames + RATE * BUFFER_MS / 1000 * 2;
+		long lead = RATE * LEAD_MS / 1000;
+		long total = lead + job->gap * (job->copies - 1) + job->frames + RATE * BUFFER_MS / 1000 * 2;
 		int16_t out[CHUNK * 2];
 		for (long frame = 0; frame < total && !audio_external_wanted();) {
 			int n = 0;
 			for (; n < CHUNK && frame < total; n++, frame++) {
 				int32_t v = 0;
 				for (int c = 0; c < job->copies; c++) {
-					long at = frame - job->gap * c;
+					long at = frame - lead - job->gap * c;
 					if (at >= 0 && at < job->frames) {
 						v += job->pcm[at];
 					}
@@ -73,9 +78,13 @@ static void *play_main(void *arg) {
 	} else {
 		printf("chime: no output; silent\n");
 	}
+	void (*done)(void) = job->done;
 	free(job->pcm);
 	free(job);
 	atomic_store(&playing, false);
+	if (done) {
+		done();
+	}
 	return NULL;
 }
 
@@ -96,7 +105,7 @@ static bool claim(void) {
 	return output_free() && atomic_compare_exchange_strong(&playing, &expected, true);
 }
 
-bool chime_beep(void) {
+bool chime_beep(void (*done)(void)) {
 	if (!claim()) {
 		return false;
 	}
@@ -116,6 +125,7 @@ bool chime_beep(void) {
 	}
 	job->pcm = pcm;
 	job->frames = beep;
+	job->done = done;
 	job->copies = 2; // the same beep twice
 	job->gap = beep + gap;
 	return start(job);

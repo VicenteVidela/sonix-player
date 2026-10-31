@@ -11,8 +11,11 @@
 // Each returns at once, the sound playing on a thread of its own, and is false
 // when nothing will be heard: something is playing, or a sound already is.
 
-// The timer's: one short digital beep-beep. Synthesised.
-bool chime_beep(void);
+// The timer's: one short digital beep-beep. Synthesised. `done`, when given,
+// is called on the sound's own thread once the beep has been heard -- the
+// timer resumes the music it paused for it from there. When this returns
+// false it is never called.
+bool chime_beep(void (*done)(void));
 
 // The meditation bell: a recorded singing bowl, struck `strikes` times
 // CHIME_BOWL_GAP_MS apart, each left to ring out to silence. Read from

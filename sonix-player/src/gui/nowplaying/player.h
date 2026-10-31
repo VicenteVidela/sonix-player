@@ -12,6 +12,12 @@ extern lv_obj_t *player_screen;
 
 void player_init(gui_config_t *cfg);
 
+// The Meloetta fork: a pause for a sound -- a timer ringing -- and play on
+// after it, with the button and the bar kept right. True when a local track
+// was playing and is now paused; a live station is left as it is.
+bool player_interrupt_pause(void);
+void player_interrupt_resume(void);
+
 // Start playing the given file and switch its now-playing info in the UI.
 // Does not bring the player up; call player_sheet_open() separately.
 void player_play_file(const char *filepath);
