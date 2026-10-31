@@ -18,6 +18,7 @@
 lv_obj_t *appearance_screen;
 
 static lv_obj_t *btn_dark;
+static lv_obj_t *btn_meloetta; // Meloetta: the third theme
 static lv_obj_t *btn_light;
 static lv_obj_t *btn_clock[4]; // left / centre / right / hidden
 static lv_obj_t *btn_accent[THEME_ACCENT_COUNT]; // the coloured circles
@@ -80,16 +81,17 @@ static void text_size_cb(lv_event_t *e) {
 // Paints the pair: the active choice is the filled accent button, the other a
 // quiet neutral, like libadwaita's suggested-action beside a regular button.
 static void refresh_buttons(void) {
-	bool dark = theme_is_dark();
-
-	lv_obj_t *on = dark ? btn_dark : btn_light;
-	lv_obj_t *off = dark ? btn_light : btn_dark;
-
-	lv_obj_set_style_bg_color(on, theme()->accent, 0);
-	lv_obj_set_style_text_color(lv_obj_get_child(on, 0), lv_color_white(), 0);
-
-	lv_obj_set_style_bg_color(off, theme()->surface_pressed, 0);
-	lv_obj_set_style_text_color(lv_obj_get_child(off, 0), theme()->text_primary, 0);
+	// Meloetta: three choices now, not a pair.
+	lv_obj_t *on = theme_is_meloetta() ? btn_meloetta : theme_is_dark() ? btn_dark : btn_light;
+	lv_obj_t *all[3] = {btn_dark, btn_light, btn_meloetta};
+	for (int i = 0; i < 3; i++) {
+		if (!all[i]) {
+			continue;
+		}
+		bool active = all[i] == on;
+		lv_obj_set_style_bg_color(all[i], active ? theme()->accent : theme()->surface_pressed, 0);
+		lv_obj_set_style_text_color(lv_obj_get_child(all[i], 0), active ? lv_color_white() : theme()->text_primary, 0);
+	}
 }
 
 // The active circle wears a ring in the text colour; the rest sit flat.
@@ -170,19 +172,23 @@ static lv_obj_t *make_clock_choice(lv_obj_t *parent, const char *text, int pos) 
 }
 
 static void pick_cb(lv_event_t *e) {
-	bool dark = (bool)(uintptr_t)lv_event_get_user_data(e);
-	theme_set_dark(dark);
+	uintptr_t choice = (uintptr_t)lv_event_get_user_data(e); // 0 light, 1 dark, 2 Meloetta
+	if (choice == 2) {
+		theme_set_meloetta();
+	} else {
+		theme_set_dark(choice == 1);
+	}
 	refresh_buttons();
 }
 
-static lv_obj_t *make_choice(lv_obj_t *parent, const char *text, bool dark) {
+static lv_obj_t *make_choice(lv_obj_t *parent, const char *text, uintptr_t choice) {
 	lv_obj_t *btn = lv_btn_create(parent);
 	lv_obj_set_size(btn, LV_SIZE_CONTENT, 64);
-	lv_obj_set_style_pad_hor(btn, 34, 0);
+	lv_obj_set_style_pad_hor(btn, 26, 0);
 	lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0); // Adwaita pill button
 	lv_obj_set_style_shadow_width(btn, 0, 0);
 	lv_obj_set_style_border_width(btn, 0, 0);
-	lv_obj_add_event_cb(btn, pick_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)dark);
+	lv_obj_add_event_cb(btn, pick_cb, LV_EVENT_CLICKED, (void *)choice);
 
 	lv_obj_t *label = lv_label_create(btn);
 	lv_label_set_text(label, tr(text));
@@ -221,11 +227,12 @@ void appearance_init(gui_config_t *cfg) {
 	lv_obj_set_style_pad_all(row, 0, 0);
 	lv_obj_set_style_pad_gap(row, 14, 0);
 	lv_obj_set_scrollable(row, false);
-	lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+	lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
 	lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-	btn_dark = make_choice(row, "appearance_dark", true);
-	btn_light = make_choice(row, "appearance_light", false);
+	btn_dark = make_choice(row, "appearance_dark", 1);
+	btn_light = make_choice(row, "appearance_light", 0);
+	btn_meloetta = make_choice(row, "appearance_meloetta", 2);
 
 	// A second card: where the clock sits in the status bar.
 	lv_obj_t *clock_card = lv_obj_create(container);

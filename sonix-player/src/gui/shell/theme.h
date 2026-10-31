@@ -79,7 +79,15 @@ int theme_get_accent(void);
 void theme_set_accent(int index);
 
 // Picks a specific theme rather than flipping; no-op when already active.
+// Also leaves the Meloetta theme.
 void theme_set_dark(bool dark);
+
+// Meloetta: a third theme from Meloetta's Aria Forme, DARK: their taupe body
+// in dark shades for pages and cards, their white face for the text, their pale
+// green hair for the accent. Its accent is fixed: the accent circles do not
+// move it.
+void theme_set_meloetta(void);
+bool theme_is_meloetta(void);
 
 // The dynamic tint (Appearance > Dynamic tint): the neutral colours --
 // backgrounds, cards, the status bar -- borrow the accent's hue, the way

@@ -50,6 +50,25 @@ static theme_palette_t palette_light = {
 	.dark = false,
 };
 
+// Meloetta, Aria Forme, as a DARK theme (Vicho uses dark everywhere): the
+// page and cards are their taupe body (#847878) taken down to dark shades, the
+// text is their white face, and the accent is their pale green hair. Sampled from
+// their Pokemon HOME render; the eye cyan (#78D0E8) is left for later touches.
+static theme_palette_t palette_meloetta = {
+	.screen_bg = LV_COLOR_MAKE(44, 38, 38),
+	.surface = LV_COLOR_MAKE(62, 54, 54),
+	.surface_pressed = LV_COLOR_MAKE(84, 74, 73),
+	.panel = LV_COLOR_MAKE(36, 31, 31),
+	.cover_bg = LV_COLOR_MAKE(36, 31, 31),
+	.text_primary = LV_COLOR_MAKE(246, 244, 240),
+	.text_secondary = LV_COLOR_MAKE(178, 168, 166),
+	.accent = LV_COLOR_MAKE(140, 196, 106),
+	.dark = true,
+};
+#define MELOETTA_BOOT_ACCENT 3 // the green boot logo is the nearest stock one
+
+static bool meloetta_selected;
+
 // Whether the dark preset is the chosen one, kept apart from `active` because
 // with the dynamic tint on `active` points at a derived copy rather than at
 // either preset.
@@ -146,7 +165,7 @@ static lv_color_t tint_with(lv_color_t c, lv_color_t accent, float strength) {
 
 // Points `active` at the chosen preset, or at a tinted copy of it.
 static void rebuild_active(void) {
-	theme_palette_t *base = dark_selected ? &palette_dark : &palette_light;
+	theme_palette_t *base = meloetta_selected ? &palette_meloetta : dark_selected ? &palette_dark : &palette_light;
 
 	if (!dynamic_tint) {
 		active = base;
@@ -224,6 +243,7 @@ void theme_init(void) {
 
 	// Whatever was chosen last time. Dark is the default for a first boot.
 	dark_selected = config_get_bool("ui", "dark_theme", true);
+	meloetta_selected = config_get_bool("ui", "meloetta_theme", false);
 
 	// The accent as it was left; both palettes carry the same one.
 	accent_index = (int)config_get_int("ui", "accent", 0);
@@ -239,7 +259,7 @@ void theme_init(void) {
 	apply_palette();
 
 	// The marker on the flash may be missing or older than these settings.
-	bootlogo_follow(active->dark, accent_index);
+	bootlogo_follow(active->dark, meloetta_selected ? MELOETTA_BOOT_ACCENT : accent_index);
 }
 
 void theme_apply_slider_knob(lv_obj_t *slider) {
@@ -278,11 +298,38 @@ const theme_palette_t *theme(void) { return active; }
 
 bool theme_is_dark(void) { return active->dark; }
 
+bool theme_is_meloetta(void) { return meloetta_selected; }
+
+static void refresh_all(void);
+
+// Meloetta: one place that makes a choice of the three take effect.
+static void apply_choice(bool meloetta, bool dark) {
+	meloetta_selected = meloetta;
+	dark_selected = dark;
+	rebuild_active();
+	apply_palette();
+
+	config_set_bool("ui", "dark_theme", dark);
+	config_set_bool("ui", "meloetta_theme", meloetta);
+	config_save();
+
+	bootlogo_follow(active->dark, meloetta ? MELOETTA_BOOT_ACCENT : accent_index);
+
+	refresh_all();
+}
+
 void theme_set_dark(bool dark) {
-	if (active->dark == dark) {
+	if (!meloetta_selected && dark_selected == dark) {
 		return;
 	}
-	theme_toggle();
+	apply_choice(false, dark);
+}
+
+void theme_set_meloetta(void) {
+	if (meloetta_selected) {
+		return;
+	}
+	apply_choice(true, false);
 }
 
 // Which palette the pages on screen were last walked for.
@@ -375,17 +422,9 @@ static void refresh_all(void) {
 }
 
 void theme_toggle(void) {
-	dark_selected = !dark_selected;
-	rebuild_active();
-	apply_palette();
-
-	config_set_bool("ui", "dark_theme", active->dark);
-	config_save();
-
-	// The boot logo follows the theme and the accent; see bootlogo.h.
-	bootlogo_follow(active->dark, accent_index);
-
-	refresh_all();
+	// From Meloetta a flip goes to dark; otherwise dark and light swap.
+	// The boot logo follows inside apply_choice; see bootlogo.h.
+	apply_choice(false, meloetta_selected ? true : !dark_selected);
 }
 
 void theme_set_accent(int index) {
@@ -401,7 +440,7 @@ void theme_set_accent(int index) {
 	config_set_int("ui", "accent", index);
 	config_save();
 
-	bootlogo_follow(active->dark, accent_index);
+	bootlogo_follow(active->dark, meloetta_selected ? MELOETTA_BOOT_ACCENT : accent_index);
 
 	refresh_all();
 }
