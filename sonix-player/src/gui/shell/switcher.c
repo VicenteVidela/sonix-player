@@ -17,6 +17,9 @@
 #include "src/gui/shell/theme.h"
 #include "src/gui/shell/topbar.h"
 #include "src/gui/nowplaying/trackmenu.h"
+#include "src/gui/ebook/ebookreader.h"
+#include "src/gui/flappybird/flappybird.h"
+#include "src/gui/gearboy/gearboyplay.h"
 
 // Diameter of the round back button. Small enough to stay out of the way of
 // the artwork, big enough to still be a comfortable touch target.
@@ -432,6 +435,61 @@ void switcher_attach_back_gesture(lv_obj_t *obj) {
 	lv_obj_add_event_cb(obj, back_drag_cb, LV_EVENT_PRESS_LOST, NULL);
 }
 
+// Meloetta: swipe back from anywhere on a page, not only where a page happened
+// to attach the gesture. A press lands on the innermost clickable object, and
+// every lv_obj_create() container is clickable by default, so a page whose
+// content sits in a plain layout container swallowed the swipe everywhere but
+// the status bar. This walks the page and gives the gesture to those layout
+// containers: plain lv_obj, clickable, with no event handlers of their own.
+// Rows and buttons (which have handlers), sliders, rollers and the like are
+// left alone, so nothing that already reacts to a press changes.
+//
+// Not on the pages where a sideways drag is the content: the book being read
+// (it turns pages), the game screens.
+static bool has_back_gesture(lv_obj_t *obj) {
+	uint32_t n = lv_obj_get_event_count(obj);
+	for (uint32_t i = 0; i < n; i++) {
+		lv_event_dsc_t *d = lv_obj_get_event_dsc(obj, i);
+		if (d && lv_event_dsc_get_cb(d) == back_drag_cb) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void back_gesture_walk(lv_obj_t *obj, int depth) {
+	if (depth > 10) {
+		return;
+	}
+	uint32_t n = lv_obj_get_child_count(obj);
+	for (uint32_t i = 0; i < n; i++) {
+		lv_obj_t *c = lv_obj_get_child(obj, (int32_t)i);
+		if (lv_obj_check_type(c, &lv_obj_class) && lv_obj_is_clickable(c) && lv_obj_get_event_count(c) == 0) {
+			switcher_attach_back_gesture(c);
+		}
+		back_gesture_walk(c, depth + 1);
+	}
+}
+
+static void back_gesture_whole_page(lv_obj_t *screen) {
+	if (!screen || screen == main_menu_screen || screen == player_screen || screen == ebookreader_screen ||
+		screen == flappybird_screen || screen == gearboyplay_screen) {
+		return;
+	}
+	if (!has_back_gesture(screen)) {
+		switcher_attach_back_gesture(screen);
+	}
+	back_gesture_walk(screen, 0);
+}
+
+// Again once the page has settled: some pages build their content as they are
+// shown.
+static void back_gesture_async_cb(void *screen) {
+	if (screen && screen == lv_screen_active()) {
+		back_gesture_whole_page((lv_obj_t *)screen);
+	}
+}
+
 void switch_screen(lv_obj_t *target_screen) {
 	// The player is not a page: it is a panel that slides in over whatever is
 	// already on screen, so there is nothing to load and nothing to remember.
@@ -526,7 +584,9 @@ static void load_screen(lv_obj_t *target_screen) {
 	// instead of all of them at the moment of the change.
 	theme_notify_screen_shown(target_screen);
 
+	back_gesture_whole_page(target_screen);
 	lv_screen_load(target_screen);
+	lv_async_call(back_gesture_async_cb, target_screen);
 }
 
 // Pages that have something to say before they will let go of the chevron.
