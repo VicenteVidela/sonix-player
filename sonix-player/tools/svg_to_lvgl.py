@@ -164,6 +164,28 @@ ICONS = [
     ("playlist-relax.svg", "playlist_relax", 34),
     ("playlist-robot.svg", "playlist_robot", 34),
     ("playlist-velvet.svg", "playlist_velvet", 34),
+    # Meloetta: one per library section and Deezer playlist (2026-11-01). Lucide,
+    # except the Poke Ball and the Triforce, drawn for the fork.
+    ("playlist-animalcrossing.svg", "playlist_animalcrossing", 34),
+    ("playlist-castlevania.svg", "playlist_castlevania", 34),
+    ("playlist-donkeykong.svg", "playlist_donkeykong", 34),
+    ("playlist-mariokart.svg", "playlist_mariokart", 34),
+    ("playlist-megaman.svg", "playlist_megaman", 34),
+    ("playlist-papermario.svg", "playlist_papermario", 34),
+    ("playlist-persona.svg", "playlist_persona", 34),
+    ("playlist-pokemon.svg", "playlist_pokemon", 34),
+    ("playlist-undertaledeltarune.svg", "playlist_undertaledeltarune", 34),
+    ("playlist-zelda.svg", "playlist_zelda", 34),
+    ("playlist-covers.svg", "playlist_covers", 34),
+    ("playlist-concertslive.svg", "playlist_concertslive", 34),
+    ("playlist-muse.svg", "playlist_muse", 34),
+    ("playlist-gorillaz.svg", "playlist_gorillaz", 34),
+    ("playlist-japo.svg", "playlist_japo", 34),
+    ("playlist-tohobossanova.svg", "playlist_tohobossanova", 34),
+    ("playlist-bajo.svg", "playlist_bajo", 34),
+    ("playlist-j.svg", "playlist_j", 34),
+    ("playlist-lyrics.svg", "playlist_lyrics", 34),
+    ("playlist-recyclebin.svg", "playlist_recyclebin", 34),
     # Selection mode on the library lists and the file browser: its corner
     # buttons that add the chosen rows to a playlist, to the favourites and to
     # the queue, and inside a playlist or the favourites take them out.
