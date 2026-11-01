@@ -2,6 +2,7 @@
 
 #include "src/gui/flappybird/flappybird.h"
 #include "src/gui/gearboy/gearboypage.h"
+#include "src/gui/meloetta/encore.h"
 #include "src/gui/meloetta/puzzlespage.h"
 #include "src/gui/shell/gridpage.h"
 #include "src/gui/shell/icons.h"
@@ -18,6 +19,7 @@ void gamespage_init(gui_config_t *cfg) {
 		// An action: the artwork is read from the resource tree on the way in.
 		{"flappy_bird", &icon_menu_flappy_bird, NULL, flappybird_open},
 		{"puzzles", &icon_menu_puzzles, &puzzlespage_screen, NULL},
+		{"encore", &icon_menu_encore, NULL, encore_open},
 	};
 	lv_obj_t *grid = gridpage_build(gamespage_screen, cfg, entries, (int)(sizeof(entries) / sizeof(entries[0])), 2, 3, true);
 	gridpage_set_scrolling(grid);
