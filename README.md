@@ -1,9 +1,51 @@
-﻿# Sonix Player
+# Sonix Player
 
 A replacement player for the **HiBy R3 Pro II** and the **HiBy R1**, written on
 LVGL.
 
 Everything it can do is in **[FEATURES.md](FEATURES.md)**.
+
+## This fork: Meloetta
+
+This is a personal fork (branch `meloetta`) of
+**[Sonix Player](https://github.com/Jepl4r/sonix-player)** by
+[@Jepl4r](https://github.com/Jepl4r) and its contributors, made for one HiBy R1
+called Meloetta. Everything good underneath it is theirs; all credit for the
+player, the build system and the packer goes to them. Please report bugs in
+this fork here, not upstream.
+
+What the fork adds, all on the More page unless said otherwise: Moon, Weather,
+Clocks (clock face, stopwatch, timer), Meditation, a pet fed by your plays,
+artist pictures and playlist glyphs, a Meloetta theme, a Clock screensaver,
+a game-sound switch for Gearboy and a swipe-back from anywhere on a page.
+
+### Credits for the fork
+
+- **Sonix Player** by Jepl4r and contributors, GPL-3.0: the whole base this is
+  built on.
+- **Gearboy** by Ignacio Sanchez ([drhelius](https://github.com/drhelius/Gearboy)),
+  GPL-3.0, carried unchanged from upstream in `src/gb/`.
+- **[LVGL](https://lvgl.io)**, MIT: the graphics library under every screen.
+- **Weather data by [Open-Meteo.com](https://open-meteo.com/)**, licensed
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The Weather screen
+  asks their free API directly from the player.
+- **Meditation bell**: "Tibetan Singing Bowl hit 11inch" by דג בלי מלח,
+  [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Tibetan_Singing_Bowl_hit_11inch.flac),
+  CC BY-SA 4.0. Trimmed, faded, mixed to mono and re-encoded; the changed
+  file (`gui/meloetta/bowl.ogg`) is under the same licence, see its
+  `CREDITS.txt`.
+- **Clock face**: after the clock of *Persona 3* (ATLUS). It is a redraw of a
+  desktop clock widget made for the same household, not ATLUS artwork.
+- **Moon phase**: computed on the player from the mean synodic month; no data
+  source is used.
+- **Pet**: a Tamagotchi-style toy, inspired by Bandai's Tamagotchi; all
+  drawing is code, no Bandai material.
+- **Meloetta** (the name and the colours of the theme) is a Pokémon,
+  © Nintendo / Creatures Inc. / GAME FREAK inc. / The Pokémon Company. The
+  repository holds no Pokémon artwork; any Pokémon picture a user puts on their
+  own card stays there.
+- Built by Vicho with Claptrap, the household's AI assistant (Claude, by
+  Anthropic).
 
 ## Install
 
