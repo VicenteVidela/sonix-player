@@ -48,6 +48,10 @@
 #include "src/system/remote/dlna.h"
 #include "src/system/remote/sonixlink.h"
 #include "src/system/net/wifi.h"
+#include "src/gui/shell/main_menu.h"
+#include "src/gui/meloetta/budspage.h"
+#include "src/gui/meloetta/notespage.h"
+#include "src/gui/settings/settings.h"
 
 #define PANEL_ANIM_MS 180
 #define PANEL_POLL_MS 700
@@ -96,6 +100,7 @@ static lv_obj_t *sleep_audiobook_btn;
 static lv_obj_t *sleep_podcast_btn;
 static lv_obj_t *wifi_transfer_btn;
 static lv_obj_t *gapless_btn;
+static lv_obj_t *go_home_btn, *go_buds_btn, *go_notes_btn, *go_settings_btn;
 
 // ---------------------------------------------------------------------------
 // Which buttons the panel carries, and where
@@ -130,6 +135,10 @@ static const char *const button_key[QP_BTN_COUNT] = {
 	[QP_BTN_SLEEP_PODCAST] = "sleep_podcast",
 	[QP_BTN_WIFI_TRANSFER] = "wifi_transfer",
 	[QP_BTN_GAPLESS] = "gapless",
+	[QP_BTN_GO_HOME] = "go_home",
+	[QP_BTN_GO_BUDS] = "go_buds",
+	[QP_BTN_GO_NOTES] = "go_notes",
+	[QP_BTN_GO_SETTINGS] = "go_settings",
 };
 
 static const char *const button_tag[QP_BTN_COUNT] = {
@@ -149,6 +158,10 @@ static const char *const button_tag[QP_BTN_COUNT] = {
 	[QP_BTN_SLEEP_PODCAST] = "quickpanel_sleep_podcast",
 	[QP_BTN_WIFI_TRANSFER] = "wifitransfer_title",
 	[QP_BTN_GAPLESS] = "musicsettings_gapless_playback",
+	[QP_BTN_GO_HOME] = "quickpanel_main_menu",
+	[QP_BTN_GO_BUDS] = "buds",
+	[QP_BTN_GO_NOTES] = "notes",
+	[QP_BTN_GO_SETTINGS] = "settings",
 };
 
 static uint8_t slots[QP_SLOT_COUNT];  // the grid, QP_BTN_NONE where it is empty
@@ -1083,6 +1096,24 @@ static void order_load(void) {
 		}
 	}
 
+	// Meloetta: the page shortcuts, new to a saved grid, take its first empty
+	// places rather than being appended past the end, where they would only
+	// overflow into the unused list.
+	for (int i = 0; i < line_n; i++) {
+		if (line[i] < QP_BTN_GO_HOME || line[i] > QP_BTN_GO_SETTINGS || i < grid) {
+			continue;
+		}
+		for (int j = 0; j < grid && j < line_n; j++) {
+			if (line[j] == QP_BTN_NONE) {
+				line[j] = line[i];
+				memmove(&line[i], &line[i + 1], (size_t)(line_n - i - 1));
+				line_n--;
+				i--;
+				break;
+			}
+		}
+	}
+
 	// Into the grid. From version 3 on the list already carries the empty
 	// places as QP_BTN_NONE, so this is a copy; below it, it is the pour.
 	int at = 0;
@@ -1171,6 +1202,14 @@ static lv_obj_t *button_widget(quickpanel_button_t which) {
 		return wifi_transfer_btn;
 	case QP_BTN_GAPLESS:
 		return gapless_btn;
+	case QP_BTN_GO_HOME:
+		return go_home_btn;
+	case QP_BTN_GO_BUDS:
+		return go_buds_btn;
+	case QP_BTN_GO_NOTES:
+		return go_notes_btn;
+	case QP_BTN_GO_SETTINGS:
+		return go_settings_btn;
 	default:
 		return NULL;
 	}
@@ -1385,6 +1424,14 @@ const lv_image_dsc_t *quickpanel_button_icon(quickpanel_button_t button) {
 		return &icon_wifi_transfer_quick;
 	case QP_BTN_GAPLESS:
 		return &icon_gapless_on_quick;
+	case QP_BTN_GO_HOME:
+		return &icon_go_home_quick;
+	case QP_BTN_GO_BUDS:
+		return &icon_go_buds_quick;
+	case QP_BTN_GO_NOTES:
+		return &icon_go_notes_quick;
+	case QP_BTN_GO_SETTINGS:
+		return &icon_go_settings_quick;
 	default:
 		return &icon_wifi;
 	}
@@ -1871,6 +1918,29 @@ static void open_page(lv_obj_t *screen) {
 
 static void open_page_cb(lv_event_t *e) { open_page(lv_event_get_user_data(e)); }
 
+// Meloetta: back to the main menu, with nothing behind it.
+static void go_home_cb(lv_event_t *e) {
+	(void)e;
+	quickpanel_close();
+	if (player_sheet_is_open()) {
+		player_sheet_close(false);
+	}
+	screen_history_reset();
+	if (lv_screen_active() != main_menu_screen) {
+		switch_screen_no_history(main_menu_screen);
+	}
+}
+
+// A tap opens the page; a page shortcut has nothing to hold for.
+static void go_page_cb(lv_event_t *e) {
+	if (long_press_consumed) {
+		long_press_consumed = false;
+		return;
+	}
+	open_page(*(lv_obj_t **)lv_event_get_user_data(e));
+	long_press_consumed = false;
+}
+
 // A bare glyph button for the transport row.
 static lv_obj_t *make_flat_button(lv_obj_t *parent, int size, lv_event_cb_t cb) {
 	lv_obj_t *btn = lv_btn_create(parent);
@@ -2063,6 +2133,15 @@ void quickpanel_init(gui_config_t *cfg) {
 	gapless_btn = make_circle_button(row, &icon_gapless_off_quick);
 	lv_obj_add_event_cb(gapless_btn, gapless_clicked_cb, LV_EVENT_CLICKED, NULL);
 	lv_obj_add_event_cb(gapless_btn, gapless_page_cb, LV_EVENT_LONG_PRESSED, NULL);
+
+	go_home_btn = make_circle_button(row, &icon_go_home_quick);
+	lv_obj_add_event_cb(go_home_btn, go_home_cb, LV_EVENT_CLICKED, NULL);
+	go_buds_btn = make_circle_button(row, &icon_go_buds_quick);
+	lv_obj_add_event_cb(go_buds_btn, go_page_cb, LV_EVENT_CLICKED, &budspage_screen);
+	go_notes_btn = make_circle_button(row, &icon_go_notes_quick);
+	lv_obj_add_event_cb(go_notes_btn, go_page_cb, LV_EVENT_CLICKED, &notespage_screen);
+	go_settings_btn = make_circle_button(row, &icon_go_settings_quick);
+	lv_obj_add_event_cb(go_settings_btn, go_page_cb, LV_EVENT_CLICKED, &settings_screen);
 
 	bright_row = lv_obj_create(controls_card);
 	lv_obj_set_size(bright_row, lv_pct(100), BRIGHT_ROW_H);

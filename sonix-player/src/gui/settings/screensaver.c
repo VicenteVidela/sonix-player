@@ -44,6 +44,7 @@ static lv_obj_t *clock_face; // the Clock source: the dial, instead of picture a
 static lv_obj_t *clock_group; // the dial and, under it, what is playing
 static lv_obj_t *mini_row, *mini_art_box, *mini_art, *mini_title, *mini_artist;
 static lv_obj_t *timer_line; // Meloetta: a running Clocks timer, under the dial
+static lv_obj_t *date_line;	 // Meloetta: "Sun 01/11/2026" under the dial (Vicho, 2026-11-01)
 
 // Meloetta: the page underneath, hidden while the screensaver covers it.
 // A wake repaints the whole screen bottom layer first, and Now Playing (a
@@ -254,6 +255,14 @@ static void refresh_clock(void) {
 	clocklabel_refresh(clock_label);
 	if (source == SCREENSAVER_SOURCE_CLOCK) {
 		clockface_refresh(clock_face);
+		if (date_line) {
+			time_t now = time(NULL);
+			struct tm t;
+			localtime_r(&now, &t);
+			char date[32];
+			strftime(date, sizeof(date), "%a %d/%m/%Y", &t);
+			lv_label_set_text(date_line, date);
+		}
 		// Meloetta: the Clocks timer, if one is going. Faded rather than
 		// hidden, so the dial does not jump when it starts or ends.
 		char left[24], line[64];
@@ -816,7 +825,7 @@ void screensaver_init(gui_config_t *cfg) {
 	lv_obj_set_style_bg_opa(clock_group, 0, 0);
 	lv_obj_set_style_border_width(clock_group, 0, 0);
 	lv_obj_set_style_pad_all(clock_group, 0, 0);
-	lv_obj_set_style_pad_row(clock_group, 34, 0);
+	lv_obj_set_style_pad_row(clock_group, 24, 0);
 	lv_obj_set_scrollable(clock_group, false);
 	lv_obj_set_clickable(clock_group, false);
 	lv_obj_set_event_bubble(clock_group, true);
@@ -825,6 +834,11 @@ void screensaver_init(gui_config_t *cfg) {
 	// The dial the Clocks page has, the same size, and the two a little above
 	// the middle, clear of the chevron.
 	clock_face = clockface_create(clock_group, screen_w * 3 / 4, false);
+
+	date_line = lv_label_create(clock_group);
+	lv_obj_set_style_text_font(date_line, &font_ui_28, 0);
+	lv_obj_set_style_text_color(date_line, lv_color_white(), 0);
+	lv_label_set_text(date_line, "");
 
 	// Meloetta: the running timer, between the dial and what is playing.
 	timer_line = lv_label_create(clock_group);

@@ -10,7 +10,7 @@
 #include "src/gui/meloetta/appspage.h"
 #include "src/gui/library/music.h"
 #include "src/gui/settings/settings.h"
-#include "src/gui/streaming/streaming.h"
+#include "src/gui/streaming/radiopage.h"
 #include "src/gui/wireless/wireless.h"
 #include "src/gui/shell/switcher.h"
 
@@ -25,7 +25,9 @@ void main_menu_init(gui_config_t *cfg) {
 		// Vicho's order (Meloetta fork, 2026-11-01), left to right and then
 		// down. Audiobooks moved into More to make room for Apps.
 		{"music", &icon_menu_music, &music_screen},
-		{"streaming", &icon_menu_streaming, &streaming_screen},
+		// Radio straight on the main menu instead of the Streaming page:
+		// the only streaming Vicho uses (2026-11-01).
+		{"radio", &icon_menu_radio, &radiopage_screen},
 		{"apps", &icon_menu_apps, &appspage_screen},
 		// The door to the More page, which holds the DAC and anything else
 		// that does not fit. The main menu has exactly six tiles, and one of

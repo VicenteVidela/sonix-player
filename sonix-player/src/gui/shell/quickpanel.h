@@ -67,6 +67,11 @@ typedef enum {
 	QP_BTN_SLEEP_PODCAST,
 	QP_BTN_WIFI_TRANSFER,
 	QP_BTN_GAPLESS,
+	// Meloetta: shortcuts that just open a page (Vicho, 2026-11-01)
+	QP_BTN_GO_HOME,
+	QP_BTN_GO_BUDS,
+	QP_BTN_GO_NOTES,
+	QP_BTN_GO_SETTINGS,
 	QP_BTN_COUNT,
 	QP_BTN_NONE = QP_BTN_COUNT, // an empty place in the grid
 } quickpanel_button_t;

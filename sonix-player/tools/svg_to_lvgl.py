@@ -256,6 +256,11 @@ ICONS = [
     # the gap itself -- the two halves apart while off, closed up while on.
     ("gapless-on-quick.svg", "gapless_on_quick", 46),
     ("gapless-off-quick.svg", "gapless_off_quick", 46),
+    # Meloetta: control centre page shortcuts (Lucide, ISC)
+    ("go-home-quick.svg", "go_home_quick", 46),
+    ("go-buds-quick.svg", "go_buds_quick", 46),
+    ("go-notes-quick.svg", "go_notes_quick", 46),
+    ("go-settings-quick.svg", "go_settings_quick", 46),
     # File types, in the file manager and on the web page: one glyph per
     # family, at the size of the folder beside them.
     ("files-music.svg", "files_music", 32),

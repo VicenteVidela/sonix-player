@@ -90,7 +90,46 @@ static bool is_note_name(const char *name) {
 	return has_extension(name, ".md") || has_extension(name, ".txt");
 }
 
+static bool is_folder_name(const char *name, size_t n) {
+	return n && n <= NAME_LEN && name[0] != '.' && !memchr(name, '/', n) && !memchr(name, '\n', n);
+}
+
+// What the sync carries: a note at the top, or one folder down
+// ("Folder/note.md"), since Vicho makes folders of their own (2026-11-01).
+static bool is_sync_name(const char *name) {
+	if (strlen(name) > NAME_LEN) {
+		return false;
+	}
+	const char *slash = strchr(name, '/');
+	if (!slash) {
+		return is_note_name(name);
+	}
+	return is_folder_name(name, (size_t)(slash - name)) && is_note_name(slash + 1);
+}
+
 static void note_path(const char *name, char *out, size_t size) { snprintf(out, size, "%s/%s", dir, name); }
+
+// The folder a synced note lives in, made if missing; nothing for a top note.
+static void note_parent_make(const char *name) {
+	const char *slash = strchr(name, '/');
+	if (!slash) {
+		return;
+	}
+	char path[PATH_LEN];
+	snprintf(path, sizeof(path), "%s/%.*s", dir, (int)(slash - name), name);
+	mkdir(path, 0755);
+}
+
+// After a delete from the other side: an emptied folder goes too.
+static void note_parent_tidy(const char *name) {
+	const char *slash = strchr(name, '/');
+	if (!slash) {
+		return;
+	}
+	char path[PATH_LEN];
+	snprintf(path, sizeof(path), "%s/%.*s", dir, (int)(slash - name), name);
+	rmdir(path); // fails, harmlessly, while anything is left in it
+}
 
 // FNV-1a, 64 bits, as hex: CL4P-TP computes the same over the same bytes.
 static void hash_hex(const char *s, size_t n, char out[17]) {
@@ -177,7 +216,7 @@ static void bases_load(void) {
 	}
 	bases = calloc(MAX_NOTES, sizeof(base_t));
 	for (char *line = strtok(text, "\n"); line && bases && base_count < MAX_NOTES; line = strtok(NULL, "\n")) {
-		if (strlen(line) > 17 && line[16] == ' ' && is_note_name(line + 17)) {
+		if (strlen(line) > 17 && line[16] == ' ' && is_sync_name(line + 17)) {
 			memcpy(bases[base_count].hash, line, 16);
 			snprintf(bases[base_count].name, sizeof(bases[base_count].name), "%s", line + 17);
 			base_count++;
@@ -229,13 +268,20 @@ static void scan(void) {
 		return;
 	}
 	struct dirent *de;
+	char subs[32][NAME_LEN + 1];
+	int sub_n = 0;
 	while ((de = readdir(d)) && note_count < MAX_NOTES) {
-		if (!is_note_name(de->d_name)) {
-			continue;
-		}
 		char path[PATH_LEN];
 		note_path(de->d_name, path, sizeof(path));
 		struct stat st;
+		if (de->d_name[0] != '.' && sub_n < 32 && stat(path, &st) == 0 && S_ISDIR(st.st_mode) &&
+			is_folder_name(de->d_name, strlen(de->d_name))) {
+			snprintf(subs[sub_n++], NAME_LEN + 1, "%s", de->d_name);
+			continue;
+		}
+		if (!is_note_name(de->d_name)) {
+			continue;
+		}
 		if (stat(path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size > MAX_NOTE_BYTES) {
 			continue;
 		}
@@ -245,6 +291,32 @@ static void scan(void) {
 		n->size = st.st_size;
 	}
 	closedir(d);
+	for (int k = 0; k < sub_n && note_count < MAX_NOTES; k++) {
+		char folder[PATH_LEN];
+		note_path(subs[k], folder, sizeof(folder));
+		DIR *sd = opendir(folder);
+		if (!sd) {
+			continue;
+		}
+		while ((de = readdir(sd)) && note_count < MAX_NOTES) {
+			char name[NAME_LEN * 2 + 2];
+			snprintf(name, sizeof(name), "%s/%s", subs[k], de->d_name);
+			if (!is_note_name(de->d_name) || !is_sync_name(name)) {
+				continue;
+			}
+			char path[PATH_LEN];
+			note_path(name, path, sizeof(path));
+			struct stat st;
+			if (stat(path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size > MAX_NOTE_BYTES) {
+				continue;
+			}
+			note_t *n = &notes[note_count++];
+			snprintf(n->name, sizeof(n->name), "%s", name);
+			n->mtime = st.st_mtime;
+			n->size = st.st_size;
+		}
+		closedir(sd);
+	}
 	qsort(notes, (size_t)note_count, sizeof(note_t), by_newest);
 }
 
@@ -270,10 +342,64 @@ static void cur_path(char *out, size_t size) {
 	}
 }
 
+// Meloetta: the order Vicho dragged the notes into, one name per line in
+// <folder>/.order (Vicho, 2026-11-01). It stays on the card: the sync only
+// carries .md/.txt. A note not in it (a new one) goes on top, newest first.
+static char (*order_names)[NAME_LEN + 1];
+static int order_n;
+
+static void order_file(char *out, size_t size) {
+	char folder[PATH_LEN];
+	cur_path(folder, sizeof(folder));
+	snprintf(out, size, "%s/.order", folder);
+}
+
+static void order_load_file(void) {
+	order_n = 0;
+	if (!order_names) {
+		order_names = calloc(MAX_NOTES, sizeof(*order_names));
+		if (!order_names) {
+			return;
+		}
+	}
+	char path[PATH_LEN + 8];
+	order_file(path, sizeof(path));
+	FILE *f = fopen(path, "r");
+	if (!f) {
+		return;
+	}
+	char line[NAME_LEN + 4];
+	while (order_n < MAX_NOTES && fgets(line, sizeof(line), f)) {
+		line[strcspn(line, "\r\n")] = 0;
+		if (line[0]) {
+			snprintf(order_names[order_n++], NAME_LEN + 1, "%s", line);
+		}
+	}
+	fclose(f);
+}
+
+static int order_rank(const char *name) {
+	for (int i = 0; i < order_n; i++) {
+		if (strcmp(order_names[i], name) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 static int item_order(const void *a, const void *b) {
 	const item_t *x = a, *y = b;
 	if (x->is_dir != y->is_dir) {
 		return x->is_dir ? -1 : 1;
+	}
+	if (!x->is_dir) {
+		int rx = order_rank(x->name), ry = order_rank(y->name);
+		if (rx >= 0 && ry >= 0) {
+			return rx - ry;
+		}
+		if ((rx >= 0) != (ry >= 0)) {
+			return rx >= 0 ? 1 : -1; // the unordered (new) ones first
+		}
 	}
 	if (!sub[0] && !x->is_dir && x->mtime != y->mtime) {
 		return x->mtime < y->mtime ? 1 : -1;
@@ -316,7 +442,23 @@ static void scan_items(void) {
 		it->is_dir = is_dir;
 	}
 	closedir(d);
+	order_load_file();
 	qsort(items, (size_t)item_count, sizeof(item_t), item_order);
+}
+
+static void order_save(void) {
+	char path[PATH_LEN + 8];
+	order_file(path, sizeof(path));
+	FILE *f = fopen(path, "w");
+	if (!f) {
+		return;
+	}
+	for (int i = 0; i < item_count; i++) {
+		if (!items[i].is_dir) {
+			fprintf(f, "%s\n", items[i].name);
+		}
+	}
+	fclose(f);
 }
 
 // "Shopping.md" -> "Shopping"
@@ -585,12 +727,13 @@ static bool apply_answer(sync_job_t *job) {
 			if (*after == ' ' && nlen <= NAME_LEN && data + len <= end) {
 				memcpy(name, after + 1, nlen);
 				name[nlen] = 0;
-				if (is_note_name(name)) {
+				if (is_sync_name(name)) {
 					if (editing_name(name) || !unchanged_since_sent(job, name)) {
 						skipped = true;
 					} else {
 						char path[PATH_LEN];
 						note_path(name, path, sizeof(path));
+						note_parent_make(name);
 						if (write_all(path, data, len)) {
 							view_reload_if_open(name, false);
 						}
@@ -604,13 +747,14 @@ static bool apply_answer(sync_job_t *job) {
 		if (kind == 'D' && llen > 2 && llen - 2 <= NAME_LEN) {
 			memcpy(name, p + 2, llen - 2);
 			name[llen - 2] = 0;
-			if (is_note_name(name)) {
+			if (is_sync_name(name)) {
 				if (editing_name(name) || !unchanged_since_sent(job, name)) {
 					skipped = true;
 				} else {
 					char path[PATH_LEN];
 					note_path(name, path, sizeof(path));
 					unlink(path);
+					note_parent_tidy(name);
 					view_reload_if_open(name, true);
 				}
 			}
@@ -621,7 +765,7 @@ static bool apply_answer(sync_job_t *job) {
 			k->hash[16] = 0;
 			memcpy(k->name, p + 19, llen - 19);
 			k->name[llen - 19] = 0;
-			if (is_note_name(k->name)) {
+			if (is_sync_name(k->name)) {
 				keep_count++;
 			}
 		}
@@ -729,13 +873,25 @@ static char open_name[NAME_LEN + 1]; // the note on the view page
 static char view_dir[PATH_LEN];		 // the folder it is in
 static void view_open(const char *folder, const char *name, bool edit);
 
+static lv_obj_t *new_folder_btn; // hidden inside a folder
+
 static void list_title_refresh(void) {
 	char shown[NAME_LEN + 1];
 	snprintf(shown, sizeof(shown), "%s", sub[0] ? sub : tr("notes"));
 	lv_label_set_text(list_title, shown);
+	// one level of folders: no new folder inside one
+	if (new_folder_btn) {
+		lv_obj_set_hidden(new_folder_btn, sub[0] != 0);
+	}
 }
 
+static bool suppress_click; // the release that ends a hold also clicks
+
 static void row_click_cb(lv_event_t *e) {
+	if (suppress_click) {
+		suppress_click = false;
+		return;
+	}
 	if (gesture_not_tap()) {
 		return;
 	}
@@ -781,20 +937,148 @@ static void delete_ok(void *user) {
 	}
 }
 
+// Hold a note: drag it up or down to move it, or let go where it is to be
+// asked about deleting it (what a hold did before dragging existed).
+#define DRAG_SLOP 14
+static int drag_i = -1;
+static lv_obj_t *drag_row;
+static int32_t drag_start_y, drag_dy;
+static int drag_from, drag_to;
+
+static void drag_reorder_async(void *user) {
+	(void)user;
+	if (drag_from < 0 || drag_from >= item_count || drag_to < 0 || drag_to >= item_count) {
+		return;
+	}
+	item_t moved = items[drag_from];
+	if (drag_to > drag_from) {
+		memmove(&items[drag_from], &items[drag_from + 1], sizeof(item_t) * (size_t)(drag_to - drag_from));
+	} else {
+		memmove(&items[drag_to + 1], &items[drag_to], sizeof(item_t) * (size_t)(drag_from - drag_to));
+	}
+	items[drag_to] = moved;
+	order_save();
+	int32_t y = lv_obj_get_scroll_y(list_col);
+	list_rebuild();
+	lv_obj_update_layout(list_col);
+	lv_obj_scroll_to_y(list_col, y, LV_ANIM_OFF);
+}
+
+static void drag_end(bool released) {
+	lv_obj_t *row = drag_row;
+	int i = drag_i;
+	drag_i = -1;
+	drag_row = NULL;
+	lv_obj_set_scrollable(list_col, true);
+	if (!row) {
+		return;
+	}
+	lv_obj_set_style_translate_y(row, 0, 0);
+	lv_obj_set_style_border_width(row, 0, 0);
+	if (!released) {
+		return;
+	}
+	suppress_click = true;
+	if (LV_ABS(drag_dy) < DRAG_SLOP) {
+		snprintf(delete_name, sizeof(delete_name), "%s", items[i].name);
+		char shown[NAME_LEN + 1];
+		display_name(delete_name, shown, sizeof(shown));
+		confirm_show(tr("notes_delete_title"), shown, tr("notes_delete"), delete_ok, NULL);
+		return;
+	}
+	int first = 0; // folders stay on top, notes move among notes
+	while (first < item_count && items[first].is_dir) {
+		first++;
+	}
+	int32_t pitch = lv_obj_get_height(row) + lv_obj_get_style_pad_row(list_col, 0);
+	if (pitch <= 0) {
+		return;
+	}
+	int shift = (int)((drag_dy + (drag_dy > 0 ? pitch / 2 : -pitch / 2)) / pitch);
+	int to = i + shift;
+	to = to < first ? first : to >= item_count ? item_count - 1 : to;
+	if (to == i) {
+		return;
+	}
+	drag_from = i;
+	drag_to = to;
+	lv_async_call(drag_reorder_async, NULL); // not while the row's own event runs
+}
+
+// Everything under a folder, then the folder.
+static void remove_tree(const char *path) {
+	DIR *d = opendir(path);
+	if (d) {
+		struct dirent *de;
+		while ((de = readdir(d))) {
+			if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) {
+				continue;
+			}
+			char child[PATH_LEN + NAME_LEN + 2];
+			snprintf(child, sizeof(child), "%s/%s", path, de->d_name);
+			struct stat st;
+			if (lstat(child, &st) == 0 && S_ISDIR(st.st_mode)) {
+				remove_tree(child);
+			} else {
+				unlink(child);
+			}
+		}
+		closedir(d);
+	}
+	rmdir(path);
+}
+
+static void delete_folder_ok(void *user) {
+	(void)user;
+	char path[PATH_LEN + NAME_LEN + 2];
+	snprintf(path, sizeof(path), "%s/%s", dir, delete_name);
+	remove_tree(path);
+	list_rebuild();
+	sync_start(false); // its notes go to CL4P-TP's trash, not to nothing
+}
+
 static void row_long_cb(lv_event_t *e) {
 	if (gesture_not_tap()) {
 		return;
 	}
 	int i = (int)(intptr_t)lv_event_get_user_data(e);
-	if (i < 0 || i >= item_count || items[i].is_dir) {
+	if (i >= 0 && i < item_count && items[i].is_dir) {
+		snprintf(delete_name, sizeof(delete_name), "%s", items[i].name);
+		confirm_show(tr("notes_delete_folder_title"), delete_name, tr("notes_delete"), delete_folder_ok, NULL);
+		// The long press ends in a release, and a release over the row is a click.
+		lv_indev_wait_release(lv_indev_active());
 		return;
 	}
-	snprintf(delete_name, sizeof(delete_name), "%s", items[i].name);
-	char shown[NAME_LEN + 1];
-	display_name(delete_name, shown, sizeof(shown));
-	confirm_show(tr("notes_delete_title"), shown, tr("notes_delete"), delete_ok, NULL);
-	// The long press ends in a release, and a release over the row is a click.
-	lv_indev_wait_release(lv_indev_active());
+	if (i < 0 || i >= item_count) {
+		return;
+	}
+	lv_point_t pt;
+	lv_indev_get_point(lv_indev_active(), &pt);
+	drag_i = i;
+	drag_row = lv_event_get_current_target(e);
+	drag_start_y = pt.y;
+	drag_dy = 0;
+	// the list must not scroll away under the finger while a note is held
+	lv_obj_set_scrollable(list_col, false);
+	lv_obj_set_style_border_width(drag_row, 2, 0);
+	lv_obj_set_style_border_color(drag_row, theme()->accent, 0);
+}
+
+static void row_drag_cb(lv_event_t *e) {
+	if (drag_i < 0 || lv_event_get_current_target(e) != drag_row) {
+		return;
+	}
+	lv_event_code_t code = lv_event_get_code(e);
+	if (code == LV_EVENT_PRESSING) {
+		lv_point_t pt;
+		lv_indev_get_point(lv_indev_active(), &pt);
+		drag_dy = pt.y - drag_start_y;
+		lv_obj_set_style_translate_y(drag_row, drag_dy, 0);
+	} else if (code == LV_EVENT_RELEASED) {
+		drag_end(true);
+	} else if (code == LV_EVENT_PRESS_LOST) {
+		drag_end(false);
+	}
 }
 
 static void list_rebuild(void) {
@@ -820,12 +1104,19 @@ static void list_rebuild(void) {
 		lv_obj_set_style_pad_column(row, 12, 0);
 		lv_obj_add_event_cb(row, row_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
 		lv_obj_add_event_cb(row, row_long_cb, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
+		lv_obj_add_event_cb(row, row_drag_cb, LV_EVENT_PRESSING, NULL);
+		lv_obj_add_event_cb(row, row_drag_cb, LV_EVENT_RELEASED, NULL);
+		lv_obj_add_event_cb(row, row_drag_cb, LV_EVENT_PRESS_LOST, NULL);
 		lv_obj_set_event_bubble(row, true);
 
 		if (items[i].is_dir) {
 			lv_obj_t *glyph = lv_image_create(row);
 			lv_image_set_src(glyph, &icon_folder_open);
 			lv_obj_add_style(glyph, &theme_style_icon, 0);
+			// the 80 px icon at text height, so a folder row is as tall as a note row
+			lv_obj_set_size(glyph, 32, 32);
+			lv_image_set_inner_align(glyph, LV_IMAGE_ALIGN_CENTER);
+			lv_image_set_scale(glyph, LV_SCALE_NONE * 32 / 80);
 		}
 		char shown[NAME_LEN + 1];
 		if (items[i].is_dir) {
@@ -869,17 +1160,35 @@ static void name_layer_hide(void) {
 	back_btn_hide_on_screen(notespage_screen, false);
 }
 
+static bool naming_folder; // the dialog is naming a folder, not a note
+static lv_obj_t *name_heading;
+
+static void name_open(bool folder) {
+	naming_folder = folder;
+	lv_label_set_text(name_heading, tr(folder ? "notes_new_folder" : "notes_new"));
+	lv_textarea_set_text(name_field, "");
+	keyboard_reset(name_keyboard);
+	lv_obj_set_hidden(name_layer, false);
+	lv_obj_move_foreground(name_layer);
+	back_btn_hide_on_screen(notespage_screen, true);
+}
+
+static void new_folder_cb(lv_event_t *e) {
+	(void)e;
+	if (!ensure_dir()) {
+		gui_notify_no_card();
+		return;
+	}
+	name_open(true);
+}
+
 static void new_cb(lv_event_t *e) {
 	(void)e;
 	if (!ensure_dir()) {
 		gui_notify_no_card();
 		return;
 	}
-	lv_textarea_set_text(name_field, "");
-	keyboard_reset(name_keyboard);
-	lv_obj_set_hidden(name_layer, false);
-	lv_obj_move_foreground(name_layer);
-	back_btn_hide_on_screen(notespage_screen, true);
+	name_open(false);
 }
 
 static void name_cancel_cb(lv_event_t *e) {
@@ -907,6 +1216,17 @@ static void name_accept_cb(lv_event_t *e) {
 	}
 	if (!n || n > NAME_LEN - 4) {
 		gui_notify_popup("notes_name_invalid");
+		return;
+	}
+	if (naming_folder) {
+		char path[PATH_LEN + NAME_LEN + 2];
+		snprintf(path, sizeof(path), "%s/%s", dir, s);
+		if (mkdir(path, 0755) != 0) {
+			gui_notify_popup(errno == EEXIST ? "notes_name_taken" : "notes_save_failed");
+			return;
+		}
+		name_layer_hide();
+		list_rebuild();
 		return;
 	}
 	char file[NAME_LEN + 1];
@@ -978,8 +1298,23 @@ static lv_obj_t *edit_field;
 static keyboard_t *edit_keyboard;
 static bool editing;
 
+// The open note's sync name: "note.md", or "Folder/note.md" one folder down.
+static bool open_sync_name(char *out, size_t size) {
+	size_t dn = strlen(dir);
+	if (strcmp(view_dir, dir) == 0) {
+		snprintf(out, size, "%s", open_name);
+		return true;
+	}
+	if (strncmp(view_dir, dir, dn) == 0 && view_dir[dn] == '/' && !strchr(view_dir + dn + 1, '/')) {
+		snprintf(out, size, "%s/%s", view_dir + dn + 1, open_name);
+		return true;
+	}
+	return false;
+}
+
 static bool editing_name(const char *name) {
-	return editing && strcmp(view_dir, dir) == 0 && strcmp(name, open_name) == 0;
+	char mine[PATH_LEN];
+	return editing && open_sync_name(mine, sizeof(mine)) && strcmp(name, mine) == 0;
 }
 
 typedef struct {
@@ -1607,7 +1942,8 @@ static void view_open(const char *folder, const char *name, bool edit) {
 }
 
 static void view_reload_if_open(const char *name, bool deleted) {
-	if (strcmp(name, open_name) != 0 || strcmp(view_dir, dir) != 0 || editing) {
+	char mine[PATH_LEN];
+	if (editing || !open_sync_name(mine, sizeof(mine)) || strcmp(name, mine) != 0) {
 		return;
 	}
 	if (deleted) {
@@ -1704,9 +2040,10 @@ void notespage_init(gui_config_t *cfg) {
 	lv_obj_add_style(notespage_screen, &theme_style_screen, 0);
 	lv_obj_set_scrollable(notespage_screen, false);
 	list_title = settingsrow_title(notespage_screen, cfg, "notes");
-	settingsrow_title_corner_slots(list_title, cfg, 2);
+	settingsrow_title_corner_slots(list_title, cfg, 3);
 	corner_button(notespage_screen, &icon_plus, 0, new_cb);
-	corner_button(notespage_screen, &icon_file_down, 1, sync_cb);
+	new_folder_btn = corner_button(notespage_screen, &icon_folder_new, 1, new_folder_cb);
+	corner_button(notespage_screen, &icon_file_down, 2, sync_cb);
 
 	list_status = lv_label_create(notespage_screen);
 	lv_label_set_text(list_status, "");
@@ -1728,7 +2065,7 @@ void notespage_init(gui_config_t *cfg) {
 	lv_obj_set_hidden(list_empty, true);
 
 	name_layer = full_layer(notespage_screen);
-	layer_heading(name_layer, "notes_new");
+	name_heading = layer_heading(name_layer, "notes_new");
 	corner_button(name_layer, &icon_close, 0, name_cancel_cb);
 	name_field = lv_textarea_create(name_layer);
 	lv_textarea_set_one_line(name_field, true);
