@@ -20,7 +20,6 @@
 #include "src/gui/ebook/ebookreader.h"
 #include "src/gui/flappybird/flappybird.h"
 #include "src/gui/gearboy/gearboyplay.h"
-#include "src/gui/meloetta/puzzleplay.h"
 
 // Diameter of the round back button. Small enough to stay out of the way of
 // the artwork, big enough to still be a comfortable touch target.
@@ -474,7 +473,7 @@ static void back_gesture_walk(lv_obj_t *obj, int depth) {
 
 static void back_gesture_whole_page(lv_obj_t *screen) {
 	if (!screen || screen == main_menu_screen || screen == player_screen || screen == ebookreader_screen ||
-		screen == flappybird_screen || screen == gearboyplay_screen || screen == puzzleplay_screen) {
+		screen == flappybird_screen || screen == gearboyplay_screen) {
 		return;
 	}
 	if (!has_back_gesture(screen)) {
