@@ -15,6 +15,8 @@
 #include <unistd.h>
 
 #include "src/gui/fonts/fonts.h"
+#include "src/gui/library/imageview.h"
+#include "src/gui/nowplaying/cover.h"
 #include "src/gui/nowplaying/player.h"
 #include "src/gui/shell/confirm.h"
 #include "src/gui/shell/icons.h"
@@ -246,12 +248,102 @@ static void scan(void) {
 	qsort(notes, (size_t)note_count, sizeof(note_t), by_newest);
 }
 
+// What the list shows: the folder on screen, which is the Notes folder or one
+// folder inside it (a document split into chapters). Folders come first; at the
+// top the notes are newest first, inside a folder by name, so chapters read in
+// order. Only the top level is synced: a folder is reading put on the card.
+typedef struct {
+	char name[NAME_LEN + 1];
+	time_t mtime;
+	bool is_dir;
+} item_t;
+
+static item_t *items;
+static int item_count;
+static char sub[NAME_LEN + 1]; // the folder inside Notes on screen, "" at the top
+
+static void cur_path(char *out, size_t size) {
+	if (sub[0]) {
+		snprintf(out, size, "%s/%s", dir, sub);
+	} else {
+		snprintf(out, size, "%s", dir);
+	}
+}
+
+static int item_order(const void *a, const void *b) {
+	const item_t *x = a, *y = b;
+	if (x->is_dir != y->is_dir) {
+		return x->is_dir ? -1 : 1;
+	}
+	if (!sub[0] && !x->is_dir && x->mtime != y->mtime) {
+		return x->mtime < y->mtime ? 1 : -1;
+	}
+	return strcasecmp(x->name, y->name);
+}
+
+static void scan_items(void) {
+	item_count = 0;
+	if (!items) {
+		items = calloc(MAX_NOTES, sizeof(item_t));
+		if (!items) {
+			return;
+		}
+	}
+	char folder[PATH_LEN];
+	cur_path(folder, sizeof(folder));
+	DIR *d = opendir(folder);
+	if (!d) {
+		return;
+	}
+	struct dirent *de;
+	while ((de = readdir(d)) && item_count < MAX_NOTES) {
+		if (de->d_name[0] == '.' || strlen(de->d_name) > NAME_LEN) {
+			continue;
+		}
+		char path[PATH_LEN + NAME_LEN + 2];
+		snprintf(path, sizeof(path), "%s/%s", folder, de->d_name);
+		struct stat st;
+		if (stat(path, &st) != 0) {
+			continue;
+		}
+		bool is_dir = S_ISDIR(st.st_mode);
+		if (is_dir ? sub[0] != 0 : !(S_ISREG(st.st_mode) && is_note_name(de->d_name) && st.st_size <= MAX_NOTE_BYTES)) {
+			continue; // one level of folders, and only notes in them
+		}
+		item_t *it = &items[item_count++];
+		snprintf(it->name, sizeof(it->name), "%s", de->d_name);
+		it->mtime = st.st_mtime;
+		it->is_dir = is_dir;
+	}
+	closedir(d);
+	qsort(items, (size_t)item_count, sizeof(item_t), item_order);
+}
+
 // "Shopping.md" -> "Shopping"
 static void display_name(const char *name, char *out, size_t size) {
 	snprintf(out, size, "%s", name);
 	char *dot = strrchr(out, '.');
 	if (dot && dot != out) {
 		*dot = 0;
+	}
+}
+
+// In a book folder the files are "02 Title.md", "02b Title.md": the number
+// keeps the reading order and is not part of the name.
+static void shown_name(const char *name, bool in_folder, char *out, size_t size) {
+	display_name(name, out, size);
+	if (!in_folder) {
+		return;
+	}
+	const char *p = out;
+	if (p[0] >= '0' && p[0] <= '9' && p[1] >= '0' && p[1] <= '9') {
+		p += 2;
+		if (*p >= 'a' && *p <= 'z') {
+			p++;
+		}
+		if (*p == ' ' && p[1]) {
+			memmove(out, p + 1, strlen(p + 1) + 1);
+		}
 	}
 }
 
@@ -634,24 +726,55 @@ static lv_obj_t *list_empty;
 static lv_obj_t *list_title;
 
 static char open_name[NAME_LEN + 1]; // the note on the view page
-static void view_open(const char *name, bool edit);
+static char view_dir[PATH_LEN];		 // the folder it is in
+static void view_open(const char *folder, const char *name, bool edit);
+
+static void list_title_refresh(void) {
+	char shown[NAME_LEN + 1];
+	snprintf(shown, sizeof(shown), "%s", sub[0] ? sub : tr("notes"));
+	lv_label_set_text(list_title, shown);
+}
 
 static void row_click_cb(lv_event_t *e) {
 	if (gesture_not_tap()) {
 		return;
 	}
 	int i = (int)(intptr_t)lv_event_get_user_data(e);
-	if (i >= 0 && i < note_count) {
-		view_open(notes[i].name, false);
+	if (i < 0 || i >= item_count) {
+		return;
 	}
+	if (items[i].is_dir) {
+		snprintf(sub, sizeof(sub), "%s", items[i].name);
+		list_title_refresh();
+		list_rebuild();
+		lv_obj_scroll_to_y(list_col, 0, LV_ANIM_OFF);
+		return;
+	}
+	char folder[PATH_LEN];
+	cur_path(folder, sizeof(folder));
+	view_open(folder, items[i].name, false);
 }
+
+// Back out of a folder before back out of the page.
+static bool list_back_guard(void) {
+	if (sub[0]) {
+		sub[0] = 0;
+		list_title_refresh();
+		list_rebuild();
+		return true;
+	}
+	return false;
+}
+
+static bool list_back_peek(void) { return sub[0] != 0; }
 
 static char delete_name[NAME_LEN + 1];
 
 static void delete_ok(void *user) {
 	(void)user;
-	char path[PATH_LEN];
-	note_path(delete_name, path, sizeof(path));
+	char folder[PATH_LEN], path[PATH_LEN + NAME_LEN + 2];
+	cur_path(folder, sizeof(folder));
+	snprintf(path, sizeof(path), "%s/%s", folder, delete_name);
 	if (unlink(path) == 0) {
 		list_rebuild();
 		sync_start(false);
@@ -663,10 +786,10 @@ static void row_long_cb(lv_event_t *e) {
 		return;
 	}
 	int i = (int)(intptr_t)lv_event_get_user_data(e);
-	if (i < 0 || i >= note_count) {
+	if (i < 0 || i >= item_count || items[i].is_dir) {
 		return;
 	}
-	snprintf(delete_name, sizeof(delete_name), "%s", notes[i].name);
+	snprintf(delete_name, sizeof(delete_name), "%s", items[i].name);
 	char shown[NAME_LEN + 1];
 	display_name(delete_name, shown, sizeof(shown));
 	confirm_show(tr("notes_delete_title"), shown, tr("notes_delete"), delete_ok, NULL);
@@ -675,13 +798,13 @@ static void row_long_cb(lv_event_t *e) {
 }
 
 static void list_rebuild(void) {
-	scan();
+	scan_items();
 	lv_obj_clean(list_col);
-	lv_obj_set_hidden(list_empty, note_count > 0);
+	lv_obj_set_hidden(list_empty, item_count > 0);
 	time_t now = time(NULL);
 	struct tm today;
 	localtime_r(&now, &today);
-	for (int i = 0; i < note_count; i++) {
+	for (int i = 0; i < item_count; i++) {
 		lv_obj_t *row = lv_obj_create(list_col);
 		lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
 		lv_obj_add_style(row, &theme_style_card, 0);
@@ -699,8 +822,17 @@ static void list_rebuild(void) {
 		lv_obj_add_event_cb(row, row_long_cb, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
 		lv_obj_set_event_bubble(row, true);
 
+		if (items[i].is_dir) {
+			lv_obj_t *glyph = lv_image_create(row);
+			lv_image_set_src(glyph, &icon_folder_open);
+			lv_obj_add_style(glyph, &theme_style_icon, 0);
+		}
 		char shown[NAME_LEN + 1];
-		display_name(notes[i].name, shown, sizeof(shown));
+		if (items[i].is_dir) {
+			snprintf(shown, sizeof(shown), "%s", items[i].name);
+		} else {
+			shown_name(items[i].name, sub[0] != 0, shown, sizeof(shown));
+		}
 		lv_obj_t *name = lv_label_create(row);
 		lv_label_set_text(name, shown);
 		lv_obj_add_style(name, &theme_style_text, 0);
@@ -708,8 +840,11 @@ static void list_rebuild(void) {
 		lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
 		lv_obj_set_flex_grow(name, 1);
 
+		if (items[i].is_dir) {
+			continue;
+		}
 		struct tm tm;
-		localtime_r(&notes[i].mtime, &tm);
+		localtime_r(&items[i].mtime, &tm);
 		char when[24];
 		if (tm.tm_year == today.tm_year && tm.tm_yday == today.tm_yday) {
 			strftime(when, sizeof(when), "%H:%M", &tm);
@@ -780,8 +915,9 @@ static void name_accept_cb(lv_event_t *e) {
 	} else {
 		snprintf(file, sizeof(file), "%s.md", s);
 	}
-	char path[PATH_LEN];
-	note_path(file, path, sizeof(path));
+	char folder[PATH_LEN], path[PATH_LEN + NAME_LEN + 2];
+	cur_path(folder, sizeof(folder));
+	snprintf(path, sizeof(path), "%s/%s", folder, file);
 	struct stat st;
 	if (stat(path, &st) == 0) {
 		gui_notify_popup("notes_name_taken");
@@ -796,7 +932,7 @@ static void name_accept_cb(lv_event_t *e) {
 		return;
 	}
 	name_layer_hide();
-	view_open(file, true);
+	view_open(folder, file, true);
 }
 
 static void sync_cb(lv_event_t *e) {
@@ -812,6 +948,7 @@ static void list_loaded_cb(lv_event_t *e) {
 		lv_obj_set_hidden(list_empty, false);
 		return;
 	}
+	list_title_refresh();
 	list_rebuild();
 	if (time(NULL) - last_sync >= AUTO_SYNC_GAP) {
 		sync_start(false);
@@ -820,6 +957,7 @@ static void list_loaded_cb(lv_event_t *e) {
 }
 
 void notespage_open(void) {
+	sub[0] = 0; // the tile opens the top, wherever the list was left
 	if (!ensure_dir()) {
 		gui_notify_no_card();
 		return;
@@ -840,7 +978,9 @@ static lv_obj_t *edit_field;
 static keyboard_t *edit_keyboard;
 static bool editing;
 
-static bool editing_name(const char *name) { return editing && strcmp(name, open_name) == 0; }
+static bool editing_name(const char *name) {
+	return editing && strcmp(view_dir, dir) == 0 && strcmp(name, open_name) == 0;
+}
 
 typedef struct {
 	lv_obj_t *group;
@@ -940,7 +1080,285 @@ static void task_cb(lv_event_t *e) {
 	lv_obj_scroll_to_y(view_col, y, LV_ANIM_OFF);
 }
 
+// --- figures: decoded one at a time on a thread, at the width of the page,
+// and let go with the drawing. A tap shows one on the picture page.
+
+#define MAX_FIGS 48
+#define FIG_MAX_H 640
+
+typedef struct {
+	lv_obj_t *box;
+	lv_obj_t *img;
+	cover_image_t pic;
+	bool loaded;
+	char path[PATH_LEN + NAME_LEN + 2];
+} fig_t;
+
+static fig_t figs[MAX_FIGS];
+static int fig_count;
+static int fig_next;
+static bool fig_busy;
+static unsigned fig_gen;
+
+typedef struct {
+	unsigned gen;
+	int index;
+	char path[PATH_LEN + NAME_LEN + 2];
+	int w;
+	cover_image_t pic;
+	bool ok;
+} fig_job_t;
+
+static void figs_free(void) {
+	fig_gen++;
+	for (int i = 0; i < fig_count; i++) {
+		if (figs[i].loaded) {
+			if (gui_obj_alive(figs[i].img)) {
+				lv_image_set_src(figs[i].img, NULL);
+			}
+			cover_free(&figs[i].pic);
+		}
+	}
+	memset(figs, 0, sizeof(figs));
+	fig_count = 0;
+	fig_next = 0;
+}
+
+static void fig_pump(void);
+
+static void fig_done(void *user) {
+	fig_job_t *job = user;
+	fig_busy = false;
+	if (job->gen != fig_gen || job->index >= fig_count) {
+		cover_free(&job->pic);
+		free(job);
+		fig_pump();
+		return;
+	}
+	fig_t *f = &figs[job->index];
+	if (job->ok) {
+		f->pic = job->pic;
+		f->loaded = true;
+		lv_image_set_src(f->img, &f->pic.dsc);
+		lv_obj_set_hidden(f->img, false);
+		lv_obj_set_style_min_height(f->box, 0, 0);
+	}
+	free(job);
+	fig_pump();
+}
+
+static void *fig_worker(void *arg) {
+	fig_job_t *job = arg;
+	thread_be_background("notesfig");
+	job->ok = cover_load_image_file(job->path, job->w, FIG_MAX_H, COVER_FIT_CONTAIN, &job->pic);
+	if (!gui_post(fig_done, job)) {
+		cover_free(&job->pic);
+		free(job);
+	}
+	return NULL;
+}
+
+static void fig_pump(void) {
+	if (fig_busy || fig_next >= fig_count) {
+		return;
+	}
+	fig_job_t *job = calloc(1, sizeof(*job));
+	if (!job) {
+		return;
+	}
+	job->gen = fig_gen;
+	job->index = fig_next++;
+	job->w = (int)config->screen_width - 2 * config->padding;
+	snprintf(job->path, sizeof(job->path), "%s", figs[job->index].path);
+	pthread_t th;
+	if (pthread_create(&th, NULL, fig_worker, job) != 0) {
+		free(job);
+		return;
+	}
+	pthread_detach(th);
+	fig_busy = true;
+}
+
+static void fig_click_cb(lv_event_t *e) {
+	if (gesture_not_tap()) {
+		return;
+	}
+	int i = (int)(intptr_t)lv_event_get_user_data(e);
+	if (i >= 0 && i < fig_count) {
+		imageview_open(figs[i].path);
+	}
+}
+
+static void add_figure(const char *src, size_t src_len, const char *cap, size_t cap_len) {
+	lv_obj_t *box = plain(view_col);
+	lv_obj_set_size(box, LV_PCT(100), LV_SIZE_CONTENT);
+	lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+	lv_obj_set_flex_align(box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+	lv_obj_set_style_pad_row(box, 6, 0);
+	lv_obj_set_style_margin_ver(box, 6, 0);
+	if (fig_count >= MAX_FIGS || src_len == 0 || src_len >= NAME_LEN) {
+		rich(box, cap, cap_len, &font_ui_18, &font_ui_18, theme()->text_secondary, false);
+		return;
+	}
+	int i = fig_count++;
+	fig_t *f = &figs[i];
+	char rel[NAME_LEN + 1];
+	memcpy(rel, src, src_len);
+	rel[src_len] = 0;
+	snprintf(f->path, sizeof(f->path), "%s/%s", view_dir, rel);
+	f->box = box;
+	lv_obj_set_style_min_height(box, 120, 0);
+	lv_obj_set_style_bg_color(box, theme()->surface, 0);
+	lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+	lv_obj_set_clickable(box, true);
+	lv_obj_add_event_cb(box, fig_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+	lv_obj_set_event_bubble(box, true);
+	f->img = lv_image_create(box);
+	lv_obj_set_hidden(f->img, true);
+	lv_obj_set_clickable(f->img, false);
+	if (cap_len) {
+		lv_obj_t *c = rich(box, cap, cap_len, &font_ui_18, &font_ui_18, theme()->text_secondary, false);
+		lv_obj_set_style_text_align(c, LV_TEXT_ALIGN_CENTER, 0);
+	}
+}
+
+// --- tables: a grid of equal columns, the header row on the card colour.
+
+#define MAX_COLS 8
+
+static void add_table(const char *s, size_t start, size_t len) {
+	const theme_palette_t *t = theme();
+	size_t end = start + len;
+	size_t cell[MAX_COLS], cell_len[MAX_COLS], next;
+	int cols = 0, rows = 0;
+	bool header = false;
+	for (size_t at = start;;) {
+		int k = md_table_row(s, end, at, cell, cell_len, MAX_COLS, &next);
+		if (k < 0) {
+			break;
+		}
+		if (k == 0 && rows == 1) {
+			header = true;
+		}
+		if (k > 0) {
+			rows++;
+			if (k > cols) {
+				cols = k;
+			}
+		}
+		at = next;
+	}
+	if (!cols) {
+		return;
+	}
+	lv_obj_t *grid = plain(view_col);
+	lv_obj_set_size(grid, LV_PCT(100), LV_SIZE_CONTENT);
+	lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_COLUMN);
+	lv_obj_set_style_border_width(grid, 1, 0);
+	lv_obj_set_style_border_color(grid, t->text_secondary, 0);
+	lv_obj_set_style_border_opa(grid, LV_OPA_40, 0);
+	lv_obj_set_style_radius(grid, 8, 0);
+	lv_obj_set_style_clip_corner(grid, true, 0);
+	lv_obj_set_style_margin_ver(grid, 6, 0);
+	const lv_font_t *font = cols > 4 ? &font_ui_16 : &font_ui_20;
+	// No small bold face: in a wide table the header row is told by its colour.
+	const lv_font_t *bold = cols > 4 ? &font_ui_16 : &font_ui_20_bold;
+	int row = 0;
+	for (size_t at = start;;) {
+		int k = md_table_row(s, end, at, cell, cell_len, MAX_COLS, &next);
+		if (k < 0) {
+			break;
+		}
+		at = next;
+		if (k == 0) {
+			continue;
+		}
+		bool head = header && row == 0;
+		lv_obj_t *r = plain(grid);
+		lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
+		lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+		if (head) {
+			lv_obj_set_style_bg_color(r, t->surface, 0);
+			lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+		}
+		if (row > 0) {
+			lv_obj_set_style_border_side(r, LV_BORDER_SIDE_TOP, 0);
+			lv_obj_set_style_border_width(r, 1, 0);
+			lv_obj_set_style_border_color(r, t->text_secondary, 0);
+			lv_obj_set_style_border_opa(r, LV_OPA_40, 0);
+		}
+		for (int c = 0; c < cols; c++) {
+			lv_obj_t *cellbox = plain(r);
+			lv_obj_set_height(cellbox, LV_SIZE_CONTENT);
+			lv_obj_set_width(cellbox, 0);
+			lv_obj_set_flex_grow(cellbox, 1);
+			lv_obj_set_style_pad_all(cellbox, 6, 0);
+			if (c > 0) {
+				lv_obj_set_style_border_side(cellbox, LV_BORDER_SIDE_LEFT, 0);
+				lv_obj_set_style_border_width(cellbox, 1, 0);
+				lv_obj_set_style_border_color(cellbox, t->text_secondary, 0);
+				lv_obj_set_style_border_opa(cellbox, LV_OPA_40, 0);
+			}
+			size_t a = c < k ? cell[c] : 0, l = c < k ? cell_len[c] : 0;
+			rich(cellbox, s + a, l, head ? bold : font, cols > 4 ? font : &font_ui_20_bold,
+				 head ? t->accent : t->text_primary, false);
+		}
+		row++;
+	}
+}
+
+// --- in a folder, the last thing on a chapter is the way to the next one.
+
+static void next_cb(lv_event_t *e);
+static char next_name[NAME_LEN + 1];
+
+static void add_next_button(void) {
+	next_name[0] = 0;
+	if (strcmp(view_dir, dir) == 0) {
+		return;
+	}
+	DIR *d = opendir(view_dir);
+	if (!d) {
+		return;
+	}
+	struct dirent *de;
+	while ((de = readdir(d))) {
+		if (!is_note_name(de->d_name) || strcasecmp(de->d_name, open_name) <= 0) {
+			continue;
+		}
+		if (!next_name[0] || strcasecmp(de->d_name, next_name) < 0) {
+			snprintf(next_name, sizeof(next_name), "%s", de->d_name);
+		}
+	}
+	closedir(d);
+	if (!next_name[0]) {
+		return;
+	}
+	lv_obj_t *b = lv_obj_create(view_col);
+	lv_obj_set_size(b, LV_PCT(100), LV_SIZE_CONTENT);
+	lv_obj_add_style(b, &theme_style_card, 0);
+	lv_obj_add_style(b, &theme_style_card_pressed, LV_STATE_PRESSED);
+	lv_obj_set_style_border_width(b, 0, 0);
+	lv_obj_set_style_shadow_width(b, 0, 0);
+	lv_obj_set_style_radius(b, 14, 0);
+	lv_obj_set_style_pad_all(b, 16, 0);
+	lv_obj_set_style_margin_top(b, 18, 0);
+	lv_obj_set_scrollable(b, false);
+	lv_obj_add_event_cb(b, next_cb, LV_EVENT_CLICKED, NULL);
+	lv_obj_set_event_bubble(b, true);
+	char shown[NAME_LEN + 1], text[NAME_LEN + 64];
+	shown_name(next_name, true, shown, sizeof(shown));
+	snprintf(text, sizeof(text), tr("notes_next"), shown);
+	lv_obj_t *l = lv_label_create(b);
+	lv_label_set_text(l, text);
+	lv_obj_set_width(l, LV_PCT(100));
+	lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+	lv_obj_set_style_text_font(l, &font_ui_22_bold, 0);
+	lv_obj_set_style_text_color(l, theme()->accent, 0);
+}
+
 static void view_render(void) {
+	figs_free();
 	lv_obj_clean(view_col);
 	if (!note) {
 		return;
@@ -1041,6 +1459,12 @@ static void view_render(void) {
 			lv_obj_set_style_text_color(l, t->text_primary, 0);
 			break;
 		}
+		case MD_IMAGE:
+			add_figure(note + b.src, b.src_len, s, b.len);
+			break;
+		case MD_TABLE:
+			add_table(note, b.text, b.len);
+			break;
 		case MD_RULE: {
 			lv_obj_t *line = plain(view_col);
 			lv_obj_set_size(line, LV_PCT(100), 2);
@@ -1057,11 +1481,13 @@ static void view_render(void) {
 		lv_obj_add_style(l, &theme_style_text_dim, 0);
 		lv_obj_set_style_text_font(l, &font_ui_20, 0);
 	}
+	add_next_button();
+	fig_pump();
 }
 
 static bool view_load(const char *name) {
-	char path[PATH_LEN];
-	note_path(name, path, sizeof(path));
+	char path[PATH_LEN + NAME_LEN + 2];
+	snprintf(path, sizeof(path), "%s/%s", view_dir, name);
 	size_t len = 0;
 	char *text = read_all(path, &len);
 	if (!text) {
@@ -1072,14 +1498,14 @@ static bool view_load(const char *name) {
 	note_len = len;
 	snprintf(open_name, sizeof(open_name), "%s", name);
 	char shown[NAME_LEN + 1];
-	display_name(name, shown, sizeof(shown));
+	shown_name(name, strcmp(view_dir, dir) != 0, shown, sizeof(shown));
 	lv_label_set_text(view_title, shown);
 	return true;
 }
 
 static void save_note(void) {
-	char path[PATH_LEN];
-	note_path(open_name, path, sizeof(path));
+	char path[PATH_LEN + NAME_LEN + 2];
+	snprintf(path, sizeof(path), "%s/%s", view_dir, open_name);
 	if (!write_all(path, note, note_len)) {
 		gui_notify_popup("notes_save_failed");
 		return;
@@ -1163,8 +1589,12 @@ static bool view_back_guard(void) {
 	return false;
 }
 
-static void view_open(const char *name, bool edit) {
+static void view_open(const char *folder, const char *name, bool edit) {
+	char was[PATH_LEN];
+	snprintf(was, sizeof(was), "%s", view_dir);
+	snprintf(view_dir, sizeof(view_dir), "%s", folder);
 	if (!view_load(name)) {
+		snprintf(view_dir, sizeof(view_dir), "%s", was);
 		gui_notify_popup("notes_open_failed");
 		return;
 	}
@@ -1177,7 +1607,7 @@ static void view_open(const char *name, bool edit) {
 }
 
 static void view_reload_if_open(const char *name, bool deleted) {
-	if (strcmp(name, open_name) != 0 || editing) {
+	if (strcmp(name, open_name) != 0 || strcmp(view_dir, dir) != 0 || editing) {
 		return;
 	}
 	if (deleted) {
@@ -1208,7 +1638,23 @@ static void view_loaded_cb(lv_event_t *e) {
 static void view_unloaded_cb(lv_event_t *e) {
 	(void)e;
 	if (!editing) {
+		figs_free();
 		lv_obj_clean(view_col);
+	}
+}
+
+// The next chapter replaces this one on the same page: back still goes to the
+// folder, not through every chapter read.
+static void next_cb(lv_event_t *e) {
+	if (gesture_not_tap() || !next_name[0]) {
+		return;
+	}
+	char name[NAME_LEN + 1];
+	snprintf(name, sizeof(name), "%s", next_name);
+	if (view_load(name)) {
+		view_render();
+		lv_obj_update_layout(view_col);
+		lv_obj_scroll_to_y(view_col, 0, LV_ANIM_OFF);
 	}
 }
 
@@ -1301,6 +1747,8 @@ void notespage_init(gui_config_t *cfg) {
 	name_keyboard = keyboard_create(name_layer, cfg->screen_width, 316, name_field, NULL, "ok", name_accept_cb, NULL);
 
 	lv_obj_add_event_cb(notespage_screen, list_loaded_cb, LV_EVENT_SCREEN_LOADED, NULL);
+	switcher_set_back_guard(notespage_screen, list_back_guard);
+	switcher_set_back_guard_peek(notespage_screen, list_back_peek);
 
 	// --- one note
 	lv_obj_add_style(notesview_screen, &theme_style_screen, 0);

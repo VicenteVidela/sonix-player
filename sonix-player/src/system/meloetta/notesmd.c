@@ -97,6 +97,50 @@ bool md_next_block(const char *s, size_t n, size_t at, md_block_t *out) {
 		return true;
 	}
 
+	// A picture on a line of its own.
+	if (s[p] == '!' && p + 1 < e && s[p + 1] == '[' && s[e - 1] == ')') {
+		const char *mid = NULL;
+		for (size_t i = p + 2; i + 1 < e; i++) {
+			if (s[i] == ']' && s[i + 1] == '(') {
+				mid = s + i;
+				break;
+			}
+		}
+		if (mid) {
+			size_t close = (size_t)(mid - s);
+			out->kind = MD_IMAGE;
+			out->text = p + 2;
+			out->len = close - (p + 2);
+			out->src = close + 2;
+			out->src_len = (e - 1) - out->src;
+			// "file.png "title"" -- the title is dropped.
+			const char *sp = memchr(s + out->src, ' ', out->src_len);
+			if (sp) {
+				out->src_len = (size_t)(sp - (s + out->src));
+			}
+			return true;
+		}
+	}
+
+	// A table: this line and every following one that starts with a bar.
+	if (s[p] == '|') {
+		size_t q = out->next;
+		while (q < n) {
+			size_t qe = line_end(s, n, q);
+			int sp;
+			size_t qp = skip_indent(s, q, qe, &sp);
+			if (qp >= qe || s[qp] != '|') {
+				break;
+			}
+			q = qe < n ? qe + 1 : n;
+		}
+		out->kind = MD_TABLE;
+		out->text = at;
+		out->len = (q > at && s[q - 1] == '\n' ? q - 1 : q) - at;
+		out->next = q;
+		return true;
+	}
+
 	if (s[p] == '#') {
 		size_t h = p;
 		while (h < e && s[h] == '#') {
@@ -350,7 +394,7 @@ bool md_title(const char *s, size_t n, char *out, size_t size) {
 	size_t at = 0;
 	while (md_next_block(s, n, at, &b)) {
 		at = b.next;
-		if (b.kind == MD_BLANK || b.kind == MD_RULE || b.kind == MD_CODE || !b.len) {
+		if (b.kind == MD_BLANK || b.kind == MD_RULE || b.kind == MD_CODE || b.kind == MD_TABLE || b.kind == MD_IMAGE || !b.len) {
 			continue;
 		}
 		plain_t p = {out, size, 0};
@@ -358,4 +402,50 @@ bool md_title(const char *s, size_t n, char *out, size_t size) {
 		return out[0] != 0;
 	}
 	return false;
+}
+
+int md_table_row(const char *s, size_t end, size_t at, size_t *cell, size_t *cell_len, int max, size_t *next) {
+	if (at >= end) {
+		return -1;
+	}
+	size_t e = line_end(s, end, at);
+	*next = e < end ? e + 1 : end;
+	e = trim_cr(s, at, e);
+	int sp;
+	size_t p = skip_indent(s, at, e, &sp);
+	if (p < e && s[p] == '|') {
+		p++;
+	}
+	if (e > p && s[e - 1] == '|' && !(e - p >= 2 && s[e - 2] == '\\')) {
+		e--;
+	}
+	// The header's underline: only bars, dashes, colons and blanks.
+	bool rule = true;
+	for (size_t i = p; i < e; i++) {
+		if (!strchr("|-: ", s[i])) {
+			rule = false;
+			break;
+		}
+	}
+	if (rule) {
+		return 0;
+	}
+	int count = 0;
+	size_t c = p;
+	for (size_t i = p; i <= e && count < max; i++) {
+		if (i == e || (s[i] == '|' && !(i > p && s[i - 1] == '\\'))) {
+			size_t a = c, b = i;
+			while (a < b && s[a] == ' ') {
+				a++;
+			}
+			while (b > a && s[b - 1] == ' ') {
+				b--;
+			}
+			cell[count] = a;
+			cell_len[count] = b - a;
+			count++;
+			c = i + 1;
+		}
+	}
+	return count;
 }

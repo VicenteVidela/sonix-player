@@ -24,6 +24,8 @@ typedef enum {
 	MD_QUOTE,  // >
 	MD_CODE,   // ``` ... ```, text is the inside, fences excluded
 	MD_RULE,   // --- *** ___
+	MD_IMAGE,  // a line that is only ![caption](file): text = caption, src = file
+	MD_TABLE,  // consecutive lines starting with |: text..len spans all of them
 } md_kind_t;
 
 typedef struct {
@@ -35,6 +37,8 @@ typedef struct {
 	size_t text;	 // offset of the block's text (markers stripped)
 	size_t len;		 // its length in bytes
 	size_t next;	 // where the following block starts
+	size_t src;		 // MD_IMAGE: offset of the file name
+	size_t src_len;
 } md_block_t;
 
 // Reads the block that starts at `at` in `s` (length `n`). False at the end.
@@ -54,6 +58,12 @@ bool md_next_block(const char *s, size_t n, size_t at, md_block_t *out);
 // shown as typed.
 typedef void (*md_emit_t)(const char *text, size_t len, int styles, void *user);
 void md_inline(const char *s, size_t n, md_emit_t emit, void *user);
+
+// One row of a table block, from `at` (a line start inside it): the cells,
+// trimmed, as offsets into `s`. Returns the number of cells (at most `max`),
+// 0 for the |---|---| line under the header, -1 at the end of the block.
+// `*next` gets where the following row starts.
+int md_table_row(const char *s, size_t end, size_t at, size_t *cell, size_t *cell_len, int max, size_t *next);
 
 // The heading a note's first line gives it ("# Shopping" -> "Shopping"), or the
 // first non-blank line's text. Copied into `out`; false when the note is empty.
