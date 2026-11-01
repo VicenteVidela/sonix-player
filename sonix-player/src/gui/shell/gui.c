@@ -41,6 +41,7 @@
 #include "src/gui/meloetta/clockspage.h"
 #include "src/gui/meloetta/meditationpage.h"
 #include "src/gui/meloetta/moonpage.h"
+#include "src/gui/meloetta/homepage.h"
 #include "src/gui/meloetta/petpage.h"
 #include "src/gui/meloetta/weatherpage.h"
 #include "src/gui/gearboy/gearboyplay.h"
@@ -642,6 +643,7 @@ void gui_init(gui_config_t *cfg) {
 	flappybird_screen = lv_obj_create(NULL);
 	metronomepage_screen = lv_obj_create(NULL);
 	moonpage_screen = lv_obj_create(NULL);
+	homepage_screen = lv_obj_create(NULL);
 	weatherpage_screen = lv_obj_create(NULL);
 	clockspage_screen = lv_obj_create(NULL);
 	meditationpage_screen = lv_obj_create(NULL);
@@ -694,6 +696,7 @@ void gui_init(gui_config_t *cfg) {
 	flappybird_init(cfg);
 	metronomepage_init(cfg);
 	moonpage_init(cfg);
+	homepage_init(cfg);
 	weatherpage_init(cfg);
 	clockspage_init(cfg);
 	meditationpage_init(cfg);
@@ -778,7 +781,7 @@ void gui_init(gui_config_t *cfg) {
 		btsettings_screen, btaudio_screen,	 airpodspage_screen, airplay_screen,   streaming_screen,
 		radiopage_screen,  radiolist_screen, radiosearch_screen,
 		dlna_screen,	   sonixlink_screen,	 morepage_screen,	  gearboypage_screen, metronomepage_screen,
-		moonpage_screen, weatherpage_screen, clockspage_screen,
+		moonpage_screen, weatherpage_screen, clockspage_screen, homepage_screen,
 		meditationpage_screen, petpage_screen,
 	};
 	for (size_t i = 0; i < sizeof(back_swipe_screens) / sizeof(back_swipe_screens[0]); i++) {

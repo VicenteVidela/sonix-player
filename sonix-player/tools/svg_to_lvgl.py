@@ -489,6 +489,7 @@ COLOR_ICONS = [
     # The Meloetta fork's screens, on More with the rest.
     ("moon.png", "menu_moon", SECTION_ICON_SIZE),
     ("weather.png", "menu_weather", SECTION_ICON_SIZE),
+    ("home.png", "menu_home", SECTION_ICON_SIZE),
     ("clocks.png", "menu_clocks", SECTION_ICON_SIZE),
     ("meditation.png", "menu_meditation", SECTION_ICON_SIZE),
     ("pet.png", "menu_pet", SECTION_ICON_SIZE),
