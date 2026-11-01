@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "src/system/bluetooth/airpods.h"
+#include "src/system/meloetta/soundcore.h"
 #include "src/system/audio/audio.h"
 #include "src/system/bluetooth/btlog.h"
 #include "src/system/bluetooth/btreceiver.h"
@@ -2993,8 +2994,10 @@ static void *bluetooth_worker(void *arg) {
 			char active_name[BT_NAME_MAX];
 			name_for(active_mac, active_name, sizeof(active_name));
 			airpods_set_device(active_mac, active_name);
+			soundcore_set_device(active_mac, active_name);
 		} else {
 			airpods_set_device(NULL, NULL);
+			soundcore_set_device(NULL, NULL);
 		}
 
 		// Asked for by the track start, answered here, read by the line two
@@ -3193,6 +3196,7 @@ void bluetooth_init(void) {
 	btvolume_init();
 	btvolume_set_sync(g_volume_sync);
 	airpods_init();
+	soundcore_init();
 
 	if (pthread_create(&worker, NULL, bluetooth_worker, NULL) != 0) {
 		fprintf(stderr, "bluetooth: could not start the worker thread\n");

@@ -759,7 +759,7 @@ static void syslog_message(char *msg, size_t len) {
 // ---------------------------------------------------------------------------
 
 static const char *const player_prefixes[] = {
-	"bluetooth:", "btstack:", "btreceiver:", "btvolume:", "btplayer:", "btaudio:", "airpods:", "dbus:",
+	"bluetooth:", "btstack:", "btreceiver:", "btvolume:", "btplayer:", "btaudio:", "airpods:", "soundcore:", "dbus:",
 };
 
 static void player_tap(const char *line, size_t len) {
