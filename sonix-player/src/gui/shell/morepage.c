@@ -9,6 +9,7 @@
 #include "src/gui/library/filespage.h"
 #include "src/gui/meloetta/homepage.h"
 #include "src/gui/meloetta/budspage.h"
+#include "src/gui/meloetta/notespage.h"
 #include "src/gui/shell/gridpage.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/shell/settingsrow.h"
@@ -24,6 +25,9 @@ void morepage_init(gui_config_t *cfg) {
 		// every time it is opened, so a book copied onto the card turns up
 		// without a restart.
 		{"books", &icon_menu_books, NULL, ebookpage_open},
+		// Next to Books: reading and writing. An action for the same reason, the
+		// folder is made on the way in if the card has none.
+		{"notes", &icon_menu_notes, NULL, notespage_open},
 		{"buds", &icon_menu_buds, &budspage_screen, NULL},
 		{"home", &icon_menu_home, &homepage_screen, NULL},
 		// An action for the same reason the shelf is one: the listing is read

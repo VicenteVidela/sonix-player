@@ -281,6 +281,7 @@ ICONS = [
     # Moving them by hand is arrow_down_up, next to it.
     ("circle-dashed-check.svg", "select_mode", 34),
     ("plus.svg", "plus", 36),
+    ("pencil.svg", "pencil", 36),
     ("minus.svg", "minus", 36),             # the metronome: one beat per minute slower
     ("import.svg", "import", 34), # brings an .m3u from the card into the player's folder
     ("reset.svg", "reset", 36),             # MSEB / equalizer: back to flat
@@ -491,6 +492,7 @@ COLOR_ICONS = [
     ("weather.png", "menu_weather", SECTION_ICON_SIZE),
     ("home.png", "menu_home", SECTION_ICON_SIZE),
     ("buds.png", "menu_buds", SECTION_ICON_SIZE),
+    ("notes.png", "menu_notes", SECTION_ICON_SIZE),
     ("puzzles.png", "menu_puzzles", SECTION_ICON_SIZE),
     ("apps.png", "menu_apps", SECTION_ICON_SIZE),
     ("games.png", "menu_games", SECTION_ICON_SIZE),
