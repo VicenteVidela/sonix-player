@@ -166,6 +166,10 @@ static void load_palette(void) {
 		dark_mode(&r, &g, &b);
 		fe->palette[i] = rgb565(r, g, b);
 	}
+	// Solo's pencil marks (index 7, COL_PENCIL) flip to a deep navy that
+	// vanishes on the dark board: give them a light sky blue instead.
+	if (GAMES[fe->game] == &solo && n > 7)
+		fe->palette[7] = rgb565(0.45f, 0.72f, 1.0f);
 	fe->ncolours = n;
 	sfree(c);
 }
@@ -480,7 +484,9 @@ static void refresh_buttons(void);
 
 static void layout_board(void) {
 	int w = area_w, h = area_h;
-	midend_size(fe->me, &w, &h, false, 1.0);
+	// user_size true: the biggest tiles that fit, not the game's own
+	// preferred tile size (which left boards small in the middle).
+	midend_size(fe->me, &w, &h, true, 1.0);
 	if (w != fe->w || h != fe->h || !fe->px) {
 		free(fe->px);
 		fe->px = calloc((size_t)w * (size_t)h, sizeof(uint16_t));
@@ -829,8 +835,10 @@ void puzzleplay_init(gui_config_t *cfg) {
 	lv_obj_set_style_pad_all(page, 0, 0);
 	lv_obj_set_style_pad_row(page, 8, 0);
 	lv_obj_set_scrollable(page, false);
-	lv_obj_set_pos(page, cfg->padding, top);
-	lv_obj_set_size(page, (int32_t)cfg->screen_width - 2 * cfg->padding, (int32_t)cfg->screen_height - top - cfg->padding);
+	// thin side margins: the board gets as much of the screen as it can
+#define SIDE_MARGIN 4
+	lv_obj_set_pos(page, SIDE_MARGIN, top);
+	lv_obj_set_size(page, (int32_t)cfg->screen_width - 2 * SIDE_MARGIN, (int32_t)cfg->screen_height - top - cfg->padding);
 	lv_obj_set_flex_flow(page, LV_FLEX_FLOW_COLUMN);
 
 	status_label = lv_label_create(page);
@@ -845,7 +853,7 @@ void puzzleplay_init(gui_config_t *cfg) {
 	lv_obj_set_flex_grow(board_area, 1);
 	lv_obj_set_style_border_width(board_area, 0, 0);
 	lv_obj_set_style_radius(board_area, 12, 0);
-	lv_obj_set_style_pad_all(board_area, 6, 0);
+	lv_obj_set_style_pad_all(board_area, 2, 0);
 	lv_obj_set_style_bg_opa(board_area, LV_OPA_COVER, 0);
 	lv_obj_set_scrollable(board_area, false);
 
