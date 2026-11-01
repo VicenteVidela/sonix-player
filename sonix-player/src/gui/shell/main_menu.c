@@ -7,6 +7,7 @@
 #include "src/gui/shell/gui.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/shell/morepage.h"
+#include "src/gui/meloetta/appspage.h"
 #include "src/gui/library/music.h"
 #include "src/gui/settings/settings.h"
 #include "src/gui/streaming/streaming.h"
@@ -21,14 +22,16 @@ void main_menu_init(gui_config_t *cfg) {
 	// Music and Audiobooks both open with the card out or at a computer, and
 	// say so on their own page.
 	const grid_entry_t entries[] = {
+		// Vicho's order (Meloetta fork, 2026-11-01), left to right and then
+		// down. Audiobooks moved into More to make room for Apps.
 		{"music", &icon_menu_music, &music_screen},
 		{"streaming", &icon_menu_streaming, &streaming_screen},
-		{"wireless", &icon_menu_wireless, &wireless_screen},
-		{"audiobooks", &icon_menu_audiobooks, &audiobooks_screen},
+		{"apps", &icon_menu_apps, &appspage_screen},
 		// The door to the More page, which holds the DAC and anything else
 		// that does not fit. The main menu has exactly six tiles, and one of
 		// them has to be able to keep growing.
 		{"more", &icon_menu_more, &morepage_screen},
+		{"wireless", &icon_menu_wireless, &wireless_screen},
 		{"settings", &icon_menu_settings, &settings_screen},
 	};
 
