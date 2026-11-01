@@ -27,7 +27,11 @@
 // takes 90; the podcasts on the card take 91..102 for their twelve rows, 103
 // for the cover at the head of one of them and 104..107 for the episodes being
 // listened to -- so the pools never trample each other's requests.
-#define COVERLOADER_SLOTS 108
+// Meloetta: 108..147 are the playlist pictures on the Playlists page
+// (_playlist_art/<name>.jpg|png on the card), one per row, the first 40 rows.
+#define COVERLOADER_SLOTS 148
+#define COVERLOADER_PLAYLISTS_BASE 108
+#define COVERLOADER_PLAYLISTS_COUNT 40
 #define COVERLOADER_SEARCH_BASE 36
 #define COVERLOADER_SEARCH_COUNT 24
 #define COVERLOADER_AUDIOBOOKS_BASE 60

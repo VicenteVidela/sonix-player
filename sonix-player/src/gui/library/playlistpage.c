@@ -13,6 +13,8 @@
 #include "src/gui/shell/keyboard.h"
 #include "src/gui/library/medialist.h"
 #include "src/gui/nowplaying/player.h"
+#include "src/gui/nowplaying/cover.h"
+#include "src/gui/nowplaying/coverloader.h"
 #include "src/gui/shell/popover.h"
 #include "src/gui/shell/confirm.h"
 #include "src/gui/shell/settingsrow.h"
@@ -614,6 +616,26 @@ static const lv_image_dsc_t *playlist_glyph(const char *name) {
 		{"relaxing", &icon_playlist_relax},
 		{"robotmasters", &icon_playlist_robot},
 		{"velvetroom", &icon_playlist_velvet},
+		{"animalcrossing", &icon_playlist_animalcrossing},
+		{"castlevania", &icon_playlist_castlevania},
+		{"donkeykong", &icon_playlist_donkeykong},
+		{"mariokart", &icon_playlist_mariokart},
+		{"megaman", &icon_playlist_megaman},
+		{"papermario", &icon_playlist_papermario},
+		{"persona", &icon_playlist_persona},
+		{"pokemon", &icon_playlist_pokemon},
+		{"undertaledeltarune", &icon_playlist_undertaledeltarune},
+		{"zelda", &icon_playlist_zelda},
+		{"covers", &icon_playlist_covers},
+		{"concertslive", &icon_playlist_concertslive},
+		{"muse", &icon_playlist_muse},
+		{"gorillaz", &icon_playlist_gorillaz},
+		{"japo", &icon_playlist_japo},
+		{"tohobossanova", &icon_playlist_tohobossanova},
+		{"bajo", &icon_playlist_bajo},
+		{"j", &icon_playlist_j},
+		{"lyrics", &icon_playlist_lyrics},
+		{"recyclebin", &icon_playlist_recyclebin},
 	};
 
 	char key[64];
@@ -635,6 +657,126 @@ static const lv_image_dsc_t *playlist_glyph(const char *name) {
 	return &icon_list_music;
 }
 
+// ---------------------------------------------------------------------------
+// Meloetta: a picture per playlist, from the card
+//
+// <card>/_playlist_art/<playlist name>.jpg (or .jpeg, .png) replaces the row's
+// glyph when it exists: Deezer playlist covers, a series' art, an artist's
+// photo. The pictures stay on the card, never in the firmware. Decoded off the
+// interface thread by the cover loader, one slot per row; rows past the pool,
+// and playlists with no picture, keep their glyph.
+// ---------------------------------------------------------------------------
+
+#define ART_SIZE 56
+#define ART_POLL_MS 120
+
+static struct {
+	lv_obj_t *icon;
+	cover_image_t image;
+	bool has_image, requested, settled;
+	char path[512];
+} art[COVERLOADER_PLAYLISTS_COUNT];
+static int art_count;
+static lv_timer_t *art_timer;
+
+static bool playlist_art_path(const char *name, char *out, size_t size) {
+	char root[512];
+	snprintf(root, sizeof(root), "%s", playlists_dir());
+	char *slash = strrchr(root, '/');
+	if (!slash) {
+		return false;
+	}
+	*slash = '\0'; // <card>/Playlist -> <card>
+	char file[256];
+	snprintf(file, sizeof(file), "%s", name);
+	for (char *c = file; *c; c++) {
+		if (*c == '/') {
+			*c = '_';
+		}
+	}
+	static const char *const exts[] = {"jpg", "jpeg", "png"};
+	for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); i++) {
+		snprintf(out, size, "%s/_playlist_art/%s.%s", root, file, exts[i]);
+		if (access(out, R_OK) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Before the rows go: nothing may still point at the pixels when they are freed.
+static void art_drop_all(void) {
+	for (int i = 0; i < art_count; i++) {
+		coverloader_release(COVERLOADER_PLAYLISTS_BASE + i);
+		if (art[i].has_image) {
+			lv_image_set_src(art[i].icon, NULL);
+			cover_free(&art[i].image);
+		}
+		memset(&art[i], 0, sizeof(art[i]));
+	}
+	art_count = 0;
+}
+
+static void art_update(void) {
+	bool pending = false;
+	for (int i = 0; i < art_count; i++) {
+		if (art[i].settled) {
+			continue;
+		}
+		int slot = COVERLOADER_PLAYLISTS_BASE + i;
+		if (!art[i].requested) {
+			coverloader_request(slot, art[i].path, ART_SIZE);
+			art[i].requested = true;
+		}
+		bool finished = false;
+		cover_image_t image;
+		if (coverloader_take(slot, &image, &finished)) {
+			art[i].image = image;
+			art[i].has_image = true;
+			art[i].settled = true;
+			lv_image_set_src(art[i].icon, &art[i].image.dsc);
+			lv_obj_set_style_image_recolor_opa(art[i].icon, LV_OPA_TRANSP, 0);
+			lv_obj_set_style_radius(art[i].icon, 8, 0);
+			lv_obj_set_style_clip_corner(art[i].icon, true, 0);
+		} else if (finished) {
+			art[i].settled = true; // unreadable picture: the glyph stays
+		} else {
+			pending = true;
+		}
+	}
+	if (pending) {
+		lv_timer_resume(art_timer);
+	}
+}
+
+static void art_timer_cb(lv_timer_t *timer) {
+	lv_timer_pause(timer); // art_update resumes it while work is pending
+	if (lv_screen_active() == playlistpage_screen) {
+		art_update();
+	}
+}
+
+static void art_register_last_row(const char *name) {
+	if (art_count >= COVERLOADER_PLAYLISTS_COUNT) {
+		return;
+	}
+	char path[512];
+	if (!playlist_art_path(name, path, sizeof(path))) {
+		return;
+	}
+	lv_obj_t *row = lv_obj_get_child(list, -1);
+	lv_obj_t *icon = row ? lv_obj_get_child(row, 0) : NULL;
+	if (!icon) {
+		return;
+	}
+	art[art_count].icon = icon;
+	snprintf(art[art_count].path, sizeof(art[art_count].path), "%s", path);
+	art_count++;
+	if (art_timer) {
+		lv_timer_resume(art_timer);
+	}
+}
+
 static bool collect_row_cb(const char *name, void *user) {
 	int *count = user;
 
@@ -642,6 +784,7 @@ static bool collect_row_cb(const char *name, void *user) {
 	int tracks = playlists_count_tracks(name);
 	snprintf(subtitle, sizeof(subtitle), tr(tracks == 1 ? "playlist_track_2" : "playlist_tracks"), tracks);
 	add_row(name, subtitle, playlist_glyph(name), 0, NULL);
+	art_register_last_row(name);
 
 	(*count)++;
 	return true;
@@ -1257,6 +1400,7 @@ static unsigned rows_revision;
 
 static void rebuild_rows(void) {
 	rows_revision = library_revision(LIBRARY_LIST_PLAYLIST);
+	art_drop_all();
 	lv_obj_clean(list);
 
 	// The "new playlist" row comes first in both modes: it is the only way the
@@ -1401,12 +1545,18 @@ static void screen_loaded_cb(lv_event_t *e) {
 	if (rows_revision != library_revision(LIBRARY_LIST_PLAYLIST)) {
 		rebuild_rows();
 	}
+	if (art_timer && art_count) {
+		lv_timer_resume(art_timer); // finish any picture left waiting while the page was away
+	}
 }
 
 void playlistpage_init(gui_config_t *cfg) {
 	config = cfg;
 
 	playlistpage_screen = lv_obj_create(NULL);
+	coverloader_start();
+	art_timer = lv_timer_create(art_timer_cb, ART_POLL_MS, NULL);
+	lv_timer_pause(art_timer);
 	lv_obj_add_style(playlistpage_screen, &theme_style_screen, 0);
 	title_label = settingsrow_title(playlistpage_screen, cfg, "playlists");
 
