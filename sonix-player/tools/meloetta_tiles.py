@@ -191,6 +191,21 @@ def encore(d):
     d.polygon([(36 * U, 22 * U), (85 * U, 12 * U), (85 * U, 26 * U), (36 * U, 36 * U)], fill=255)
 
 
+def mini_golf(d):
+    line(d, [(48, 15), (48, 74)], 6)
+    d.polygon([(51*U, 15*U), (83*U, 28*U), (51*U, 40*U)], fill=255)
+    el(d, 48, 79, 30, 7)
+    el(d, 16, 70, 7)
+
+
+def fabularium(d):
+    rr(d, 19, 10, 81, 90, 9)
+    rr(d, 25, 16, 75, 84, 6, fill=0)
+    d.polygon([(50*U, 29*U), (57*U, 44*U), (69*U, 50*U),
+               (57*U, 56*U), (50*U, 71*U), (43*U, 56*U),
+               (31*U, 50*U), (43*U, 44*U)], fill=255)
+
+
 TILES = [
     ("apps", "rounded", ((80, 200, 160), (40, 160, 120)), ((150, 230, 200), (80, 200, 160)), apps),
     ("games", "circle", ((235, 90, 110), (200, 50, 80)), ((250, 160, 175), (235, 90, 110)), games),
@@ -204,6 +219,8 @@ TILES = [
     ("weather", "rounded", ((92, 172, 244), (58, 136, 224)), ((140, 195, 248), (98, 166, 240)), weather),
     ("meditation", "circle", ((240, 110, 155), (212, 72, 122)), ((245, 170, 198), (230, 125, 165)), meditation),
     ("encore", "circle", ((70, 200, 220), (35, 150, 185)), ((150, 228, 242), (80, 195, 222)), encore),
+    ("mini_golf", "circle", ((80, 175, 115), (40, 125, 80)), ((155, 215, 165), (85, 175, 120)), mini_golf),
+    ("fabularium", "rounded", ((170, 125, 70), (125, 80, 40)), ((230, 195, 130), (190, 145, 85)), fabularium),
 ]
 
 
@@ -214,7 +231,7 @@ def main():
         im.save(os.path.join(ICON_DIR, name + ".png"))
         out.append(im)
     if len(sys.argv) > 1:
-        sheet = Image.new("RGBA", (6 * 150 + 10, 2 * 150 + 10), (56, 58, 52, 255))
+        sheet = Image.new("RGBA", (6 * 150 + 10, math.ceil(len(out)/6) * 150 + 10), (56, 58, 52, 255))
         for i, im in enumerate(out):
             sheet.alpha_composite(im, (10 + (i % 6) * 150, 10 + (i // 6) * 150))
         sheet.save(sys.argv[1])

@@ -18,11 +18,13 @@ static const char *blurb(int i) {
 	switch (i) {
 	case 0: return tr("puzzles_solo");
 	case 1: return tr("puzzles_mines");
-	case 2: return tr("puzzles_pattern");
-	case 3: return tr("puzzles_net");
-	case 4: return tr("puzzles_bridges");
-	case 5: return tr("puzzles_loopy");
-	case 6: return tr("puzzles_lightup");
+	case 2: return tr("puzzles_net");
+	case 3: return tr("puzzles_bridges");
+	case 4: return tr("puzzles_lightup");
+	case 5: return tr("puzzles_towers");
+	case 6: return tr("puzzles_fifteen");
+	case 7: return tr("puzzles_samegame");
+	case 8: return tr("puzzles_flood");
 	default: return "";
 	}
 }

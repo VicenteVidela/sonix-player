@@ -1,8 +1,8 @@
 #include "appspage.h"
 
 #include "src/gui/meloetta/clockspage.h"
+#include "src/gui/meloetta/fabularium.h"
 #include "src/gui/meloetta/gamespage.h"
-#include "src/gui/meloetta/meditationpage.h"
 #include "src/gui/meloetta/moonpage.h"
 #include "src/gui/meloetta/petpage.h"
 #include "src/gui/meloetta/weatherpage.h"
@@ -20,7 +20,7 @@ void appspage_init(gui_config_t *cfg) {
 		{"clocks", &icon_menu_clocks, &clockspage_screen, NULL},
 		{"weather", &icon_menu_weather, &weatherpage_screen, NULL},
 		{"moon", &icon_menu_moon, &moonpage_screen, NULL},
-		{"meditation", &icon_menu_meditation, &meditationpage_screen, NULL},
+		{"fabularium", &icon_menu_fabularium, NULL, fabularium_open},
 	};
 	lv_obj_t *grid = gridpage_build(appspage_screen, cfg, entries, (int)(sizeof(entries) / sizeof(entries[0])), 2, 3, true);
 	gridpage_set_scrolling(grid);

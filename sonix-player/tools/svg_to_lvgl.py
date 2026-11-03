@@ -502,6 +502,8 @@ COLOR_ICONS = [
     ("apps.png", "menu_apps", SECTION_ICON_SIZE),
     ("games.png", "menu_games", SECTION_ICON_SIZE),
     ("encore.png", "menu_encore", SECTION_ICON_SIZE),
+    ("mini_golf.png", "menu_mini_golf", SECTION_ICON_SIZE),
+    ("fabularium.png", "menu_fabularium", SECTION_ICON_SIZE),
     ("clocks.png", "menu_clocks", SECTION_ICON_SIZE),
     ("meditation.png", "menu_meditation", SECTION_ICON_SIZE),
     ("pet.png", "menu_pet", SECTION_ICON_SIZE),

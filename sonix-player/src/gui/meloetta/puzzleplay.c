@@ -68,6 +68,7 @@ static lv_obj_t *keys_row;
 static lv_obj_t *mark_btn;
 static lv_obj_t *undo_btn, *redo_btn;
 static lv_obj_t *presets_panel;
+static lv_obj_t *help_panel, *help_title, *help_text;
 static int area_w, area_h;
 
 struct blitter {
@@ -513,11 +514,12 @@ static void layout_board(void) {
 // ---------------------------------------------------------------------------
 
 static int key_buttons[MAX_KEYS];
+static void after_move(void);
 
 static void key_cb(lv_event_t *e) {
 	int button = (int)(intptr_t)lv_event_get_user_data(e);
 	midend_process_key(fe->me, 0, 0, button);
-	refresh_buttons();
+	after_move();
 }
 
 static lv_obj_t *small_button(lv_obj_t *parent, const char *text, lv_event_cb_t cb, void *user) {
@@ -675,6 +677,35 @@ static void close_presets(void) {
 	}
 }
 
+static const char *game_help(int game) {
+	switch (game) {
+	case 0: return tr("puzzles_help_solo");
+	case 1: return tr("puzzles_help_mines");
+	case 2: return tr("puzzles_help_net");
+	case 3: return tr("puzzles_help_bridges");
+	case 4: return tr("puzzles_help_lightup");
+	case 5: return tr("puzzles_help_towers");
+	case 6: return tr("puzzles_help_fifteen");
+	case 7: return tr("puzzles_help_samegame");
+	case 8: return tr("puzzles_help_flood");
+	default: return "";
+	}
+}
+
+static void help_close_cb(lv_event_t *e) {
+	(void)e;
+	lv_obj_set_hidden(help_panel, true);
+}
+
+static void help_cb(lv_event_t *e) {
+	(void)e;
+	if (!fe->me) return;
+	lv_label_set_text(help_title, GAMES[fe->game]->name);
+	lv_label_set_text(help_text, game_help(fe->game));
+	lv_obj_set_hidden(help_panel, false);
+	lv_obj_move_foreground(help_panel);
+}
+
 static void preset_cb(lv_event_t *e) {
 	game_params *params = lv_event_get_user_data(e);
 	close_presets();
@@ -755,6 +786,7 @@ static void size_cb(lv_event_t *e) {
 
 static void close_game(void) {
 	close_presets();
+	if (help_panel) lv_obj_set_hidden(help_panel, true);
 	if (!fe->me) {
 		return;
 	}
@@ -827,6 +859,18 @@ void puzzleplay_init(gui_config_t *cfg) {
 	lv_obj_add_style(puzzleplay_screen, &theme_style_screen, 0);
 	lv_obj_set_scrollable(puzzleplay_screen, false);
 	title_label = settingsrow_title(puzzleplay_screen, cfg, "puzzles");
+	settingsrow_title_corner_slots(title_label, cfg, 1);
+	lv_obj_t *help_btn = lv_button_create(puzzleplay_screen);
+	lv_obj_set_size(help_btn, 56, 56);
+	lv_obj_align(help_btn, LV_ALIGN_TOP_RIGHT, -cfg->padding, cfg->padding + cfg->top_bar_height);
+	lv_obj_set_style_bg_opa(help_btn, LV_OPA_TRANSP, 0);
+	lv_obj_set_style_shadow_width(help_btn, 0, 0);
+	lv_obj_add_event_cb(help_btn, help_cb, LV_EVENT_CLICKED, NULL);
+	lv_obj_t *question = lv_label_create(help_btn);
+	lv_label_set_text(question, "?");
+	lv_obj_set_style_text_font(question, &font_ui_28, 0);
+	lv_obj_set_style_text_color(question, theme()->accent, 0);
+	lv_obj_center(question);
 
 	int top = settingsrow_content_top(cfg);
 	lv_obj_t *page = lv_obj_create(puzzleplay_screen);
@@ -888,6 +932,37 @@ void puzzleplay_init(gui_config_t *cfg) {
 	mark_btn = small_button(bar, tr("puzzles_mark"), mark_cb, NULL);
 	small_button(bar, tr("puzzles_size"), size_cb, NULL);
 	small_button(bar, tr("puzzles_new"), new_cb, NULL);
+
+	help_panel = lv_obj_create(puzzleplay_screen);
+	lv_obj_set_size(help_panel, lv_pct(100), lv_pct(100));
+	lv_obj_set_style_bg_color(help_panel, lv_color_black(), 0);
+	lv_obj_set_style_bg_opa(help_panel, LV_OPA_80, 0);
+	lv_obj_set_style_border_width(help_panel, 0, 0);
+	lv_obj_set_style_radius(help_panel, 0, 0);
+	lv_obj_set_scrollable(help_panel, false);
+	lv_obj_t *card = lv_obj_create(help_panel);
+	lv_obj_set_size(card, lv_pct(92), lv_pct(75));
+	lv_obj_center(card);
+	lv_obj_add_style(card, &theme_style_card, 0);
+	lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+	lv_obj_set_style_pad_all(card, 16, 0);
+	lv_obj_set_style_pad_row(card, 16, 0);
+	lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+	lv_obj_set_scrollable(card, false);
+	help_title = lv_label_create(card);
+	lv_obj_set_width(help_title, lv_pct(100));
+	lv_obj_set_style_text_font(help_title, &font_ui_24_bold, 0);
+	lv_obj_set_style_text_color(help_title, theme()->accent, 0);
+	help_text = lv_label_create(card);
+	lv_obj_set_width(help_text, lv_pct(100));
+	lv_label_set_long_mode(help_text, LV_LABEL_LONG_WRAP);
+	lv_obj_set_style_text_font(help_text, &font_ui_20, 0);
+	lv_obj_set_style_text_color(help_text, theme()->text_primary, 0);
+	lv_obj_set_style_text_line_space(help_text, 6, 0);
+	lv_obj_t *close = small_button(card, tr("puzzles_help_close"), help_close_cb, NULL);
+	lv_obj_set_flex_grow(close, 0);
+	lv_obj_set_width(close, lv_pct(100));
+	lv_obj_set_hidden(help_panel, true);
 
 	lv_obj_add_event_cb(puzzleplay_screen, unloaded_cb, LV_EVENT_SCREEN_UNLOADED, NULL);
 }

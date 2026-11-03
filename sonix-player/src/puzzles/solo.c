@@ -4583,7 +4583,7 @@ static game_ui *new_ui(const game_state *state)
     ui->hpencil = false;
     ui->hshow = ui->hcursor = getenv_bool("PUZZLES_SHOW_CURSOR", false);
 
-    ui->pencil_keep_highlight = false;
+    ui->pencil_keep_highlight = true;
 
     return ui;
 }
@@ -4666,9 +4666,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 
     if (tx >= 0 && tx < cr && ty >= 0 && ty < cr) {
         if (button == LEFT_BUTTON) {
-            if (state->immutable[ty*cr+tx]) {
-                ui->hshow = false;
-            } else if (tx == ui->hx && ty == ui->hy &&
+            if (tx == ui->hx && ty == ui->hy &&
                        ui->hshow && !ui->hpencil) {
                 ui->hshow = false;
             } else {
@@ -4822,7 +4820,23 @@ static game_state *execute_move(const game_state *from, const char *move)
             ret->pencil[index] = !ret->pencil[index];
         } else {
             ret->grid[y*cr+x] = n;
-            memset(ret->pencil + (y*cr+x)*cr, 0, cr);
+            memset(ret->pencil + (y*cr+x)*cr, 0, cr * sizeof(bool));
+
+            /* Ink removes conflicting notes in every applicable peer.
+             * Keep this in the move so Undo restores the notes as well. */
+            if (n > 0) {
+                int p, cell = y*cr+x;
+                for (p = 0; p < cr*cr; p++) {
+                    if (p/cr == y || p%cr == x ||
+                        ret->blocks->whichblock[p] == ret->blocks->whichblock[cell] ||
+                        (ret->xtype &&
+                         ((ondiag0(p) && ondiag0(cell)) ||
+                          (ondiag1(p) && ondiag1(cell)))) ||
+                        (ret->kblocks && ret->kblocks->whichblock[p] ==
+                         ret->kblocks->whichblock[cell]))
+                        ret->pencil[p*cr+n-1] = false;
+                }
+            }
 
             /*
              * We've made a real change to the grid. Check to see
@@ -5310,6 +5324,10 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
             if (flashtime > 0 &&
                 (flashtime <= FLASH_TIME/3 ||
                  flashtime >= FLASH_TIME*2/3))
+                highlight = 1;
+
+            /* Matching ink stays visible even when selecting a given. */
+            if (ui->hshow && d && d == state->grid[ui->hy*cr+ui->hx])
                 highlight = 1;
 
             /* Highlight active input areas. */

@@ -45,6 +45,8 @@
 #include "src/gui/meloetta/budspage.h"
 #include "src/gui/meloetta/notespage.h"
 #include "src/gui/meloetta/encore.h"
+#include "src/gui/meloetta/golfpage.h"
+#include "src/gui/meloetta/fabularium.h"
 #include "src/gui/meloetta/puzzleplay.h"
 #include "src/gui/meloetta/puzzlespage.h"
 #include "src/gui/meloetta/appspage.h"
@@ -657,6 +659,8 @@ void gui_init(gui_config_t *cfg) {
 	puzzlespage_screen = lv_obj_create(NULL);
 	puzzleplay_screen = lv_obj_create(NULL);
 	encore_screen = lv_obj_create(NULL);
+	golfpage_screen = lv_obj_create(NULL);
+	fabularium_screen = lv_obj_create(NULL);
 	appspage_screen = lv_obj_create(NULL);
 	gamespage_screen = lv_obj_create(NULL);
 	weatherpage_screen = lv_obj_create(NULL);
@@ -716,6 +720,8 @@ void gui_init(gui_config_t *cfg) {
 	notespage_init(cfg);
 	puzzleplay_init(cfg);
 	encore_init(cfg);
+	golfpage_init(cfg);
+	fabularium_init(cfg);
 	puzzlespage_init(cfg);
 	gamespage_init(cfg);
 	appspage_init(cfg);
@@ -804,7 +810,7 @@ void gui_init(gui_config_t *cfg) {
 		radiopage_screen,  radiolist_screen, radiosearch_screen,
 		dlna_screen,	   sonixlink_screen,	 morepage_screen,	  gearboypage_screen, metronomepage_screen,
 		moonpage_screen, weatherpage_screen, clockspage_screen, homepage_screen, budspage_screen, notespage_screen, notesview_screen, puzzlespage_screen, appspage_screen, gamespage_screen,
-		meditationpage_screen, petpage_screen,
+		meditationpage_screen, petpage_screen, fabularium_screen, golfpage_screen,
 	};
 	for (size_t i = 0; i < sizeof(back_swipe_screens) / sizeof(back_swipe_screens[0]); i++) {
 		switcher_attach_back_gesture(back_swipe_screens[i]);
