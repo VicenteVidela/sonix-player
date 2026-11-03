@@ -806,7 +806,7 @@ static bool collect_row_cb(const char *name, void *user) {
 // to do while the user waits.
 // ---------------------------------------------------------------------------
 
-#define IMPORT_MAX_CANDIDATES 24
+#define IMPORT_MAX_CANDIDATES 64 // the card holds ~36 playlists in Playlist/ (Vicho, 2026-11-03); 24 hid the newest
 
 // The warning mark on a row that would replace a playlist: amber, readable on
 // the light card and the dark one alike.
