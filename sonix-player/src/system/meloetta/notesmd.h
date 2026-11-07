@@ -50,6 +50,8 @@ bool md_next_block(const char *s, size_t n, size_t at, md_block_t *out);
 #define MD_CODE_SPAN 4
 #define MD_STRIKE 8
 #define MD_LINK 16
+#define MD_SUB 32 // _(...) or _{...}: a subscript group
+#define MD_SUP 64 // ^(...) or ^{...}: a superscript group
 
 // Walks `s`/`n` (one block's text) and calls `emit` for each run of text with
 // its styles: **bold**, __bold__, *italic*, _italic_ (only at word edges, so

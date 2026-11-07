@@ -26,5 +26,7 @@ void puzzleplay_open(int index);
 
 int puzzleplay_game_count(void);
 const char *puzzleplay_game_name(int index);
+// The short line under its name in the Puzzles menu.
+const char *puzzleplay_game_blurb(int index);
 
 #endif /* PUZZLEPLAY_H */

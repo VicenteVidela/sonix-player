@@ -44,7 +44,6 @@
 #include "src/gui/meloetta/homepage.h"
 #include "src/gui/meloetta/budspage.h"
 #include "src/gui/meloetta/notespage.h"
-#include "src/gui/meloetta/encore.h"
 #include "src/gui/meloetta/golfpage.h"
 #include "src/gui/meloetta/fabularium.h"
 #include "src/gui/meloetta/puzzleplay.h"
@@ -658,7 +657,6 @@ void gui_init(gui_config_t *cfg) {
 	notesview_screen = lv_obj_create(NULL);
 	puzzlespage_screen = lv_obj_create(NULL);
 	puzzleplay_screen = lv_obj_create(NULL);
-	encore_screen = lv_obj_create(NULL);
 	golfpage_screen = lv_obj_create(NULL);
 	fabularium_screen = lv_obj_create(NULL);
 	appspage_screen = lv_obj_create(NULL);
@@ -719,7 +717,6 @@ void gui_init(gui_config_t *cfg) {
 	budspage_init(cfg);
 	notespage_init(cfg);
 	puzzleplay_init(cfg);
-	encore_init(cfg);
 	golfpage_init(cfg);
 	fabularium_init(cfg);
 	puzzlespage_init(cfg);

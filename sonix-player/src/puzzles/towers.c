@@ -1215,8 +1215,8 @@ static game_ui *new_ui(const game_state *state)
     ui->hpencil = false;
     ui->hshow = ui->hcursor = getenv_bool("PUZZLES_SHOW_CURSOR", false);
 
-    ui->three_d = true;
-    ui->pencil_keep_highlight = false;
+    ui->three_d = false; /* Meloetta: flat, so pencil notes get the whole square */
+    ui->pencil_keep_highlight = true; /* Meloetta: notes keep the square selected */
     legacy_prefs_override(ui);
 
     return ui;
@@ -1479,7 +1479,8 @@ static char *interpret_move(const game_state *state, game_ui *ui,
             } else {
                 ui->hx = tx;
                 ui->hy = ty;
-		ui->hshow = !state->clues->immutable[ty*w+tx];
+		/* Meloetta: givens can be selected too, to light up their matches. */
+		ui->hshow = true;
                 ui->hpencil = false;
             }
             ui->hcursor = false;
@@ -1625,6 +1626,16 @@ static game_state *execute_move(const game_state *from, const char *move)
         } else {
             ret->grid[y*w+x] = n;
             ret->pencil[y*w+x] = 0;
+
+            /* Meloetta: ink removes the same note from its row and column.
+             * It is part of the move, so Undo brings the notes back. */
+            if (n > 0) {
+                int k;
+                for (k = 0; k < w; k++) {
+                    ret->pencil[y*w+k] &= ~(1 << n);
+                    ret->pencil[k*w+x] &= ~(1 << n);
+                }
+            }
 
             if (!ret->completed && !check_errors(ret, NULL))
                 ret->completed = true;
@@ -1955,6 +1966,11 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
 
 	    if (ui->hshow && ui->hx == x && ui->hy == y)
 		tile |= (ui->hpencil ? DF_HIGHLIGHT_PENCIL : DF_HIGHLIGHT);
+
+	    /* Meloetta: matching digits light up with the selected one. */
+	    if (ui->hshow && state->grid[y*w+x] &&
+		state->grid[y*w+x] == state->grid[ui->hy*w+ui->hx])
+		tile |= DF_HIGHLIGHT;
 
 	    if (state->clues->immutable[y*w+x])
 		tile |= DF_IMMUTABLE;

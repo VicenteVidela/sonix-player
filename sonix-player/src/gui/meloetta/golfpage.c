@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/confirm.h"
@@ -29,6 +30,16 @@ static int today(void) {
     return (date.tm_year+1900)*10000+(date.tm_mon+1)*100+date.tm_mday;
 }
 static void select_course(void){golf_course(mode,hole,day,&course);}
+/* Par of holes [0, upto) in the current mode (and date, for Daily). */
+static int par_through(int upto) {
+    int p=0; golf_course_t c;
+    for(int i=0;i<upto && i<GOLF_HOLES;i++){golf_course(mode,i,day,&c);p+=c.par;}
+    return p;
+}
+static void to_par(char *out,size_t n,int strokes,int par) {
+    int d=strokes-par;
+    if(d==0)snprintf(out,n,"E"); else snprintf(out,n,"%+d",d);
+}
 
 static void save(void) {
     config_set_int("golf","mode",mode);config_set_int("golf","day",day);
@@ -54,11 +65,21 @@ static void render(void) {
         aim_points[1]=(lv_point_precise_t){(ball.x+dx*k)*scale,(ball.y+dy*k)*scale};
         lv_line_set_points(aim,aim_points,2);
     }
-    char s[180];
+    char s[220],line2[120],tp[12],bp[12],bs[24];
+    int course_par=par_through(GOLF_HOLES);
+    /* The running +/- counts finished holes, plus this one once it drops. */
+    int played_par=par_through(hole)+(ball.sunk?course.par:0);
+    int played=total+(ball.sunk?ball.strokes:0);
+    to_par(tp,sizeof(tp),played,played_par);
+    if(best){to_par(bp,sizeof(bp),best,course_par);snprintf(bs,sizeof(bs),"%d (%s)",best,bp);}
+    else snprintf(bs,sizeof(bs),"-");
     if(ball.sunk && hole==GOLF_HOLES-1) {
-        int score=total+ball.strokes;
-        snprintf(s,sizeof(s),tr("golf_finished"),score,best?best:score);
-    } else snprintf(s,sizeof(s),tr("golf_score"),hole+1,course.par,ball.strokes,total+ball.strokes);
+        snprintf(s,sizeof(s),tr("golf_finished"),played,tp,bs);
+    } else {
+        snprintf(line2,sizeof(line2),tr("golf_total"),total+ball.strokes,tp,bs);
+        snprintf(s,sizeof(s),tr("golf_score"),hole+1,course.par,ball.strokes);
+        strncat(s,"\n",sizeof(s)-strlen(s)-1); strncat(s,line2,sizeof(s)-strlen(s)-1);
+    }
     lv_label_set_text(status,s);
     lv_obj_set_hidden(next_btn,!ball.sunk);
     lv_label_set_text(next_label,tr(hole==GOLF_HOLES-1?"golf_again":"golf_next"));
@@ -111,7 +132,7 @@ static void restart(void *user) {
 }
 static void mode_cb(lv_event_t *e) {
     (void)e;mode=(mode+1)%GOLF_MODES;
-    if(mode==2)config_set_int("golf","daily_layout_version",2);
+    if(mode==2)config_set_int("golf","daily_layout_version",3);
     if(mode==2){day=today();if(day!=config_get_int("golf","best_day",0)){
         config_set_int("golf","best_day",day);config_set_int("golf","best_daily",0);
     }}
@@ -130,8 +151,8 @@ static void next_cb(lv_event_t *e) {
 }
 static void loaded(lv_event_t *e) {
     (void)e;active=true;last_tick=lv_tick_get();
-    if(mode==2 && (day!=today() || config_get_int("golf","daily_layout_version",0)!=2)){
-        config_set_int("golf","daily_layout_version",2);
+    if(mode==2 && (day!=today() || config_get_int("golf","daily_layout_version",0)!=3)){
+        config_set_int("golf","daily_layout_version",3);
         day=today();best=0;config_set_int("golf","best_day",day);config_set_int("golf","best_daily",0);restart(NULL);
     }else draw_course();
     lv_timer_resume(timer);
@@ -152,12 +173,12 @@ void golfpage_init(gui_config_t *cfg) {
     settingsrow_title(golfpage_screen,cfg,"mini_golf");
     int top=settingsrow_content_top(cfg);
     status=lv_label_create(golfpage_screen);lv_obj_add_style(status,&theme_style_text,0);
-    lv_obj_set_style_text_font(status,&font_ui_18,0);lv_obj_set_width(status,cfg->screen_width-16);
+    lv_obj_set_style_text_font(status,&font_ui_16,0);lv_obj_set_width(status,cfg->screen_width-16);
     lv_obj_set_style_text_align(status,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_pos(status,8,top);
-    scale=fminf((cfg->screen_width-20)/(float)GOLF_W,(cfg->screen_height-top-100)/(float)GOLF_H);
+    scale=fminf((cfg->screen_width-20)/(float)GOLF_W,(cfg->screen_height-top-118)/(float)GOLF_H);
     board=lv_obj_create(golfpage_screen);lv_obj_remove_style_all(board);
     lv_obj_set_size(board,lroundf(GOLF_W*scale),lroundf(GOLF_H*scale));
-    lv_obj_set_pos(board,(cfg->screen_width-lroundf(GOLF_W*scale))/2,top+38);
+    lv_obj_set_pos(board,(cfg->screen_width-lroundf(GOLF_W*scale))/2,top+52);
     lv_obj_set_style_bg_opa(board,LV_OPA_COVER,0);lv_obj_set_style_radius(board,8,0);
     lv_obj_set_scrollable(board,false);lv_obj_set_gesture_bubble(board,false);
     lv_obj_add_event_cb(board,touch,LV_EVENT_PRESSED,NULL);lv_obj_add_event_cb(board,touch,LV_EVENT_PRESSING,NULL);

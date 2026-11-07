@@ -20,6 +20,8 @@
 //   arabic.otf    MiSans Arabic
 //   japanese.otf  FOT-Rodin, for kana, kanji and CJK punctuation when the
 //                 interface is in Japanese
+//   math.ttf      Meloetta: DejaVu Sans subset, sub/superscript letters and
+//                 maths symbols for equations in Notes
 //
 // The last four each have a -bold file for the bold sizes, optional like
 // bold.otf. fonts_init() opens them once and builds one fallback chain per

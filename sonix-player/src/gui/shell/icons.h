@@ -310,7 +310,6 @@ extern const lv_image_dsc_t icon_menu_notes;
 extern const lv_image_dsc_t icon_menu_puzzles;
 extern const lv_image_dsc_t icon_menu_apps;
 extern const lv_image_dsc_t icon_menu_games;
-extern const lv_image_dsc_t icon_menu_encore;
 extern const lv_image_dsc_t icon_menu_mini_golf;
 extern const lv_image_dsc_t icon_menu_fabularium;
 extern const lv_image_dsc_t icon_menu_clocks;

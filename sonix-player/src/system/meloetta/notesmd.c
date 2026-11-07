@@ -272,6 +272,41 @@ void md_inline(const char *s, size_t n, md_emit_t emit, void *user) {
 	while (i < n) {
 		char c = s[i];
 
+		// Equations: X_(ab), X_{ab}, X^(n), X^{n} (also with the underscore
+		// escaped, X\_(ab), as converted pages write it). The group is
+		// emitted on its own with MD_SUB / MD_SUP; the brackets are dropped.
+		{
+			size_t mark = (size_t)-1, open = 0;
+			if (c == '\\' && i + 2 < n && s[i + 1] == '_' && (s[i + 2] == '(' || s[i + 2] == '{')) {
+				mark = 1;
+				open = i + 2;
+			} else if ((c == '_' || c == '^') && i + 1 < n && (s[i + 1] == '(' || s[i + 1] == '{')) {
+				mark = 0;
+				open = i + 1;
+			}
+			if (mark != (size_t)-1 && i > 0 && s[i - 1] != ' ' && s[i - 1] != '\n') {
+				char o = s[open], cl = o == '(' ? ')' : '}';
+				int depth = 0;
+				size_t close = (size_t)-1;
+				for (size_t k = open; k < n && k < open + 64; k++) {
+					if (s[k] == o) {
+						depth++;
+					} else if (s[k] == cl && --depth == 0) {
+						close = k;
+						break;
+					}
+				}
+				if (close != (size_t)-1 && close > open + 1) {
+					FLUSH(i);
+					int flag = (mark == 1 || c == '_') ? MD_SUB : MD_SUP;
+					emit(s + open + 1, close - open - 1, styles | flag, user);
+					i = close + 1;
+					run = i;
+					continue;
+				}
+			}
+		}
+
 		if (c == '\\' && i + 1 < n && ispunct((unsigned char)s[i + 1])) {
 			FLUSH(i);
 			run = i + 1;

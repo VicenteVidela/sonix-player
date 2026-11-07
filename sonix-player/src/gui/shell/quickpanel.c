@@ -1938,6 +1938,10 @@ static void go_page_cb(lv_event_t *e) {
 		return;
 	}
 	open_page(*(lv_obj_t **)lv_event_get_user_data(e));
+	// Meloetta: a shortcut is a fresh start, not a step forward. Back from the
+	// page it opens goes to the main menu, never into the app it was opened
+	// over (Vicho, 2026-11-07: going back into that app crashed it).
+	screen_history_reset();
 	long_press_consumed = false;
 }
 

@@ -75,6 +75,10 @@ static script_face_t scripts[] = {
 	{"Korean", FACE_FILES("korean"), FACE_FILES("korean-bold"), 0, NULL, NULL, false},
 	{"Thai", FACE_FILES("thai"), FACE_FILES("thai-bold"), 0, NULL, NULL, false},
 	{"Arabic", FACE_FILES("arabic"), FACE_FILES("arabic-bold"), ARABIC_RAISE, NULL, NULL, false},
+	// Meloetta: sub/superscript letters (x_m, a_i) and maths symbols MiSans
+	// lacks, for equations in Notes. A DejaVu Sans subset (free licence,
+	// assets/fonts/math-LICENSE.txt).
+	{"Math", FACE_FILES("math"), FACE_FILES("math-bold"), 0, NULL, NULL, false},
 };
 
 #define SCRIPT_COUNT (sizeof(scripts) / sizeof(scripts[0]))

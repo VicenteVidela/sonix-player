@@ -19,7 +19,7 @@ static const golf_course_t extra_courses[GOLF_HOLES] = {
     {200,485,200,80,3,2,1,{{90,350,125,18},{185,180,125,18}},{{265,295,95,80}}},
     {70,480,330,80,4,3,0,{{0,325,265,18},{135,225,265,18},{0,125,250,18}},{{0}}},
     {320,480,80,80,3,2,1,{{75,210,18,190},{260,245,18,190}},{{125,290,105,80}}},
-    {200,480,200,75,4,3,1,{{60,355,100,18},{240,265,100,18},{60,175,100,18}},{{180,300,65,95}}},
+    {200,480,200,75,4,3,1,{{40,355,120,18},{120,265,160,18},{240,175,120,18}},{{60,290,75,70}}},
     {80,480,320,80,4,3,1,{{120,340,18,180},{210,170,18,180},{300,340,18,180}},{{245,410,80,75}}},
     {310,480,90,75,4,3,1,{{80,370,240,18},{80,245,240,18},{80,120,240,18}},{{180,275,80,75}}},
     {200,485,200,70,4,4,2,{{0,390,250,16},{150,295,250,16},{0,200,250,16},{150,105,250,16}},{{40,305,85,70},{275,210,85,70}}},
@@ -30,14 +30,44 @@ static unsigned next_random(unsigned *seed) {
     return *seed;
 }
 
+/* Does the straight tee-to-cup line (widened by the ball) miss every wall? */
+static bool straight_shot_open(const golf_course_t *c) {
+    for (int i = 0; i < c->walls; i++) {
+        golf_rect_t r = c->wall[i];
+        r.x -= GOLF_RADIUS; r.y -= GOLF_RADIUS; r.w += 2*GOLF_RADIUS; r.h += 2*GOLF_RADIUS;
+        for (int k = 0; k <= 200; k++) {
+            float t = k/200.0f, x = c->sx+(c->hx-c->sx)*t, y = c->sy+(c->hy-c->sy)*t;
+            if (x >= r.x && x <= r.x+r.w && y >= r.y && y <= r.y+r.h) return false;
+        }
+    }
+    return true;
+}
+
+static void daily_course(int hole, int day, unsigned attempt, golf_course_t *out);
+
 void golf_course(int mode, int hole, int day, golf_course_t *out) {
     if (!out) return;
     if (hole < 0 || hole >= GOLF_HOLES) hole = 0;
     if (mode == 0) { *out = golf_courses[hole]; return; }
     if (mode == 1) { *out = extra_courses[hole]; return; }
+    /* A daily hole you can sink in a straight line is a dull hole: reroll the
+       positions (same shape, still deterministic per date) until something is
+       in the way, and as a last resort drop a bar across the line. */
+    for (unsigned attempt = 0; attempt < 16; attempt++) {
+        daily_course(hole, day, attempt, out);
+        if (!straight_shot_open(out)) return;
+    }
+    if (out->walls < 5) {
+        float mx = (out->sx+out->hx)/2, my = (out->sy+out->hy)/2;
+        out->wall[out->walls++] = (golf_rect_t){fmaxf(0,fminf(GOLF_W-120,mx-60)), my-9, 120, 18};
+    }
+}
+
+static void daily_course(int hole, int day, unsigned attempt, golf_course_t *out) {
     /* Every daily round cycles through eight shapes. The date changes the
        starting side, cup, mirror and obstacle positions; no Wi-Fi required. */
-    unsigned seed = (unsigned)day * 2654435761u ^ (unsigned)(hole + 1) * 2246822519u;
+    unsigned seed = (unsigned)day * 2654435761u ^ (unsigned)(hole + 1) * 2246822519u
+                    ^ attempt * 3266489917u;
     if (!seed) seed = 1;
     int kind=((unsigned)day + (unsigned)hole*5u)%8u;
     *out = (golf_course_t){.sx=60+(next_random(&seed)%3)*140,.sy=490,

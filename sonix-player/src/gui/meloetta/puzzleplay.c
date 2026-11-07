@@ -171,6 +171,9 @@ static void load_palette(void) {
 	// vanishes on the dark board: give them a light sky blue instead.
 	if (GAMES[fe->game] == &solo && n > 7)
 		fe->palette[7] = rgb565(0.45f, 0.72f, 1.0f);
+	// Towers' pencil marks (index 5, COL_PENCIL) have the same problem.
+	if (GAMES[fe->game] == &towers && n > 5)
+		fe->palette[5] = rgb565(0.45f, 0.72f, 1.0f);
 	fe->ncolours = n;
 	sfree(c);
 }
@@ -677,20 +680,53 @@ static void close_presets(void) {
 	}
 }
 
-static const char *game_help(int game) {
-	switch (game) {
-	case 0: return tr("puzzles_help_solo");
-	case 1: return tr("puzzles_help_mines");
-	case 2: return tr("puzzles_help_net");
-	case 3: return tr("puzzles_help_bridges");
-	case 4: return tr("puzzles_help_lightup");
-	case 5: return tr("puzzles_help_towers");
-	case 6: return tr("puzzles_help_fifteen");
-	case 7: return tr("puzzles_help_samegame");
-	case 8: return tr("puzzles_help_flood");
-	default: return "";
-	}
+// The menu line and the ? text for each game. Written out so the tool that
+// checks the language files sees every key.
+static const char *game_text(int index, bool help) {
+	if (index < 0 || index >= GAME_COUNT) return "";
+	const game *g = GAMES[index];
+#define T(x, blurb, helpkey) if (g == &x) return tr(help ? helpkey : blurb);
+	T(solo, "puzzles_solo", "puzzles_help_solo")
+	T(mines, "puzzles_mines", "puzzles_help_mines")
+	T(net, "puzzles_net", "puzzles_help_net")
+	T(bridges, "puzzles_bridges", "puzzles_help_bridges")
+	T(lightup, "puzzles_lightup", "puzzles_help_lightup")
+	T(towers, "puzzles_towers", "puzzles_help_towers")
+	T(samegame, "puzzles_samegame", "puzzles_help_samegame")
+	T(flood, "puzzles_flood", "puzzles_help_flood")
+	T(blackbox, "puzzles_blackbox", "puzzles_help_blackbox")
+	T(cube, "puzzles_cube", "puzzles_help_cube")
+	T(dominosa, "puzzles_dominosa", "puzzles_help_dominosa")
+	T(filling, "puzzles_filling", "puzzles_help_filling")
+	T(flip, "puzzles_flip", "puzzles_help_flip")
+	T(galaxies, "puzzles_galaxies", "puzzles_help_galaxies")
+	T(guess, "puzzles_guess", "puzzles_help_guess")
+	T(inertia, "puzzles_inertia", "puzzles_help_inertia")
+	T(magnets, "puzzles_magnets", "puzzles_help_magnets")
+	T(map, "puzzles_map", "puzzles_help_map")
+	T(mosaic, "puzzles_mosaic", "puzzles_help_mosaic")
+	T(netslide, "puzzles_netslide", "puzzles_help_netslide")
+	T(palisade, "puzzles_palisade", "puzzles_help_palisade")
+	T(pearl, "puzzles_pearl", "puzzles_help_pearl")
+	T(pegs, "puzzles_pegs", "puzzles_help_pegs")
+	T(range, "puzzles_range", "puzzles_help_range")
+	T(rect, "puzzles_rect", "puzzles_help_rect")
+	T(signpost, "puzzles_signpost", "puzzles_help_signpost")
+	T(singles, "puzzles_singles", "puzzles_help_singles")
+	T(sixteen, "puzzles_sixteen", "puzzles_help_sixteen")
+	T(slant, "puzzles_slant", "puzzles_help_slant")
+	T(tents, "puzzles_tents", "puzzles_help_tents")
+	T(tracks, "puzzles_tracks", "puzzles_help_tracks")
+	T(twiddle, "puzzles_twiddle", "puzzles_help_twiddle")
+	T(undead, "puzzles_undead", "puzzles_help_undead")
+	T(unruly, "puzzles_unruly", "puzzles_help_unruly")
+#undef T
+	return "";
 }
+
+static const char *game_help(int game) { return game_text(game, true); }
+
+const char *puzzleplay_game_blurb(int index) { return game_text(index, false); }
 
 static void help_close_cb(lv_event_t *e) {
 	(void)e;
@@ -819,10 +855,8 @@ const char *puzzleplay_game_name(int index) {
 	return index >= 0 && index < GAME_COUNT ? GAMES[index]->name : "";
 }
 
-void puzzleplay_open(int index) {
-	if (index < 0 || index >= GAME_COUNT) {
-		return;
-	}
+// Sets game `index` up (resuming its save) without loading the screen.
+static void start_game(int index) {
 	close_game();
 	fe->game = index;
 	fe->mark = false;
@@ -837,8 +871,10 @@ void puzzleplay_open(int index) {
 	lv_label_set_text(status_label, "");
 	lv_obj_set_hidden(status_label, !midend_wants_statusbar(fe->me));
 	build_keys();
-	switch_screen(puzzleplay_screen);
-	// sizes are only right once the screen's layout has run
+}
+
+// Sizes are only right once the screen's layout has run.
+static void fit_board(void) {
 	lv_obj_update_layout(puzzleplay_screen);
 	area_w = lv_obj_get_content_width(board_area);
 	area_h = lv_obj_get_content_height(board_area);
@@ -846,9 +882,29 @@ void puzzleplay_open(int index) {
 	refresh_buttons();
 }
 
+void puzzleplay_open(int index) {
+	if (index < 0 || index >= GAME_COUNT) {
+		return;
+	}
+	start_game(index);
+	switch_screen(puzzleplay_screen);
+	fit_board();
+}
+
 static void unloaded_cb(lv_event_t *e) {
 	(void)e;
 	close_game();
+}
+
+// Coming back to this screen without puzzleplay_open (Back from a page opened
+// over the game) used to draw a board that close_game had already freed. The
+// game is picked up again from its save instead.
+static void loaded_cb(lv_event_t *e) {
+	(void)e;
+	if (!fe->me) {
+		start_game(fe->game);
+		fit_board();
+	}
 }
 
 void puzzleplay_init(gui_config_t *cfg) {
@@ -965,4 +1021,5 @@ void puzzleplay_init(gui_config_t *cfg) {
 	lv_obj_set_hidden(help_panel, true);
 
 	lv_obj_add_event_cb(puzzleplay_screen, unloaded_cb, LV_EVENT_SCREEN_UNLOADED, NULL);
+	lv_obj_add_event_cb(puzzleplay_screen, loaded_cb, LV_EVENT_SCREEN_LOADED, NULL);
 }

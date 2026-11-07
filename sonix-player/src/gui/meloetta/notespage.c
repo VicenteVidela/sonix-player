@@ -1325,8 +1325,183 @@ typedef struct {
 	bool done; // a ticked task: its text is struck through
 } spans_t;
 
+// Equations (MD_SUB / MD_SUP groups): the Unicode sub/superscript form of each
+// letter when it has one. A group where every letter has one is drawn with
+// them; otherwise it is drawn as written, in a smaller size. The math.ttf
+// fallback face carries the glyphs.
+typedef struct {
+	uint32_t from;
+	const char *to;
+} script_pair_t;
+static const script_pair_t SUB_PAIRS[] = {
+	{0x0030, "₀"},
+	{0x0031, "₁"},
+	{0x0032, "₂"},
+	{0x0033, "₃"},
+	{0x0034, "₄"},
+	{0x0035, "₅"},
+	{0x0036, "₆"},
+	{0x0037, "₇"},
+	{0x0038, "₈"},
+	{0x0039, "₉"},
+	{0x002B, "₊"},
+	{0x002D, "₋"},
+	{0x003D, "₌"},
+	{0x0028, "₍"},
+	{0x0029, "₎"},
+	{0x0061, "ₐ"},
+	{0x0065, "ₑ"},
+	{0x0068, "ₕ"},
+	{0x0069, "ᵢ"},
+	{0x006A, "ⱼ"},
+	{0x006B, "ₖ"},
+	{0x006C, "ₗ"},
+	{0x006D, "ₘ"},
+	{0x006E, "ₙ"},
+	{0x006F, "ₒ"},
+	{0x0070, "ₚ"},
+	{0x0072, "ᵣ"},
+	{0x0073, "ₛ"},
+	{0x0074, "ₜ"},
+	{0x0075, "ᵤ"},
+	{0x0076, "ᵥ"},
+	{0x0078, "ₓ"},
+	{0x03B2, "ᵦ"},
+	{0x03B3, "ᵧ"},
+	{0x03C1, "ᵨ"},
+	{0x03C6, "ᵩ"},
+	{0x03C7, "ᵪ"},
+};
+static const script_pair_t SUP_PAIRS[] = {
+	{0x0030, "⁰"},
+	{0x0031, "¹"},
+	{0x0032, "²"},
+	{0x0033, "³"},
+	{0x0034, "⁴"},
+	{0x0035, "⁵"},
+	{0x0036, "⁶"},
+	{0x0037, "⁷"},
+	{0x0038, "⁸"},
+	{0x0039, "⁹"},
+	{0x002B, "⁺"},
+	{0x002D, "⁻"},
+	{0x003D, "⁼"},
+	{0x0028, "⁽"},
+	{0x0029, "⁾"},
+	{0x0061, "ᵃ"},
+	{0x0062, "ᵇ"},
+	{0x0063, "ᶜ"},
+	{0x0064, "ᵈ"},
+	{0x0065, "ᵉ"},
+	{0x0066, "ᶠ"},
+	{0x0067, "ᵍ"},
+	{0x0068, "ʰ"},
+	{0x0069, "ⁱ"},
+	{0x006A, "ʲ"},
+	{0x006B, "ᵏ"},
+	{0x006C, "ˡ"},
+	{0x006D, "ᵐ"},
+	{0x006E, "ⁿ"},
+	{0x006F, "ᵒ"},
+	{0x0070, "ᵖ"},
+	{0x0072, "ʳ"},
+	{0x0073, "ˢ"},
+	{0x0074, "ᵗ"},
+	{0x0075, "ᵘ"},
+	{0x0076, "ᵛ"},
+	{0x0077, "ʷ"},
+	{0x0078, "ˣ"},
+	{0x0079, "ʸ"},
+	{0x007A, "ᶻ"},
+	{0x0041, "ᴬ"},
+	{0x0042, "ᴮ"},
+	{0x0044, "ᴰ"},
+	{0x0045, "ᴱ"},
+	{0x0047, "ᴳ"},
+	{0x0048, "ᴴ"},
+	{0x0049, "ᴵ"},
+	{0x004A, "ᴶ"},
+	{0x004B, "ᴷ"},
+	{0x004C, "ᴸ"},
+	{0x004D, "ᴹ"},
+	{0x004E, "ᴺ"},
+	{0x004F, "ᴼ"},
+	{0x0050, "ᴾ"},
+	{0x0052, "ᴿ"},
+	{0x0054, "ᵀ"},
+	{0x0055, "ᵁ"},
+	{0x0056, "ⱽ"},
+	{0x0057, "ᵂ"},
+	{0x03B1, "ᵅ"},
+	{0x03B2, "ᵝ"},
+	{0x03B3, "ᵞ"},
+	{0x03B4, "ᵟ"},
+	{0x03B8, "ᶿ"},
+	{0x03C6, "ᵠ"},
+	{0x03C7, "ᵡ"},
+};
+
+static uint32_t utf8_next(const char *s, size_t len, size_t *i) {
+	unsigned char c = (unsigned char)s[*i];
+	int extra = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+	uint32_t cp = extra == 3 ? (c & 0x07) : extra == 2 ? (c & 0x0F) : extra == 1 ? (c & 0x1F) : c;
+	(*i)++;
+	for (int k = 0; k < extra && *i < len; k++, (*i)++) {
+		cp = (cp << 6) | ((unsigned char)s[*i] & 0x3F);
+	}
+	return cp;
+}
+
+// Writes the scripted form of text into out; false when some letter has none.
+static bool script_text(const char *text, size_t len, bool sup, char *out, size_t size) {
+	const script_pair_t *pairs = sup ? SUP_PAIRS : SUB_PAIRS;
+	size_t count = sup ? sizeof(SUP_PAIRS) / sizeof(SUP_PAIRS[0]) : sizeof(SUB_PAIRS) / sizeof(SUB_PAIRS[0]);
+	size_t used = 0;
+	for (size_t i = 0; i < len;) {
+		size_t start = i;
+		uint32_t cp = utf8_next(text, len, &i);
+		const char *piece = NULL;
+		size_t piece_len = 0;
+		for (size_t k = 0; k < count && !piece; k++) {
+			if (pairs[k].from == cp) {
+				piece = pairs[k].to;
+				piece_len = strlen(piece);
+			}
+		}
+		// Already a sub/superscript letter (the page wrote one): kept as is.
+		for (size_t k = 0; k < count && !piece; k++) {
+			size_t tl = strlen(pairs[k].to);
+			if (tl == i - start && memcmp(pairs[k].to, text + start, tl) == 0) {
+				piece = text + start;
+				piece_len = tl;
+			}
+		}
+		if (!piece && cp == ',') {
+			piece = ",";
+			piece_len = 1;
+		}
+		if (!piece || used + piece_len + 1 > size) {
+			return false;
+		}
+		memcpy(out + used, piece, piece_len);
+		used += piece_len;
+	}
+	out[used] = 0;
+	return true;
+}
+
 static void span_emit(const char *text, size_t len, int styles, void *user) {
 	spans_t *sp = user;
+	char scripted[256];
+	const lv_font_t *small = NULL;
+	if (styles & (MD_SUB | MD_SUP)) {
+		if (script_text(text, len, (styles & MD_SUP) != 0, scripted, sizeof(scripted))) {
+			text = scripted;
+			len = strlen(scripted);
+		} else {
+			small = &font_ui_16;
+		}
+	}
 	lv_span_t *span = lv_spangroup_add_span(sp->group);
 	char *piece = malloc(len + 1);
 	if (!piece) {
@@ -1337,7 +1512,7 @@ static void span_emit(const char *text, size_t len, int styles, void *user) {
 	lv_span_set_text(span, piece);
 	free(piece);
 	lv_style_t *st = lv_span_get_style(span);
-	lv_style_set_text_font(st, (styles & MD_BOLD) ? sp->bold : sp->font);
+	lv_style_set_text_font(st, small ? small : (styles & MD_BOLD) ? sp->bold : sp->font);
 	// No italic or monospace face in the player: italic is the quiet colour,
 	// code and links the accent.
 	lv_color_t c = sp->color;
