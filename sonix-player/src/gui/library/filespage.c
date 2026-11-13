@@ -272,7 +272,7 @@ static int entry_cmp(const void *a, const void *b) {
 	if (x->dir != y->dir) {
 		return x->dir ? -1 : 1;
 	}
-	return strcasecmp(x->name, y->name);
+	return library_natural_casecmp(x->name, y->name);
 }
 
 static void read_folder(void) {
@@ -734,7 +734,7 @@ static void pick_rebuild(void) {
 
 	for (int i = 0; i < count - 1; i++) {
 		for (int j = i + 1; j < count; j++) {
-			if (strcasecmp(names[i], names[j]) > 0) {
+			if (library_natural_casecmp(names[i], names[j]) > 0) {
 				char swap[NAME_MAX + 1];
 				snprintf(swap, sizeof(swap), "%s", names[i]);
 				snprintf(names[i], NAME_MAX + 1, "%s", names[j]);

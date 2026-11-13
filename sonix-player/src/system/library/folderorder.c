@@ -134,7 +134,7 @@ static __thread char **rank_albums;
 static int rank_cmp(const void *a, const void *b) {
 	int ia = *(const int *)a;
 	int ib = *(const int *)b;
-	int by_name = strcasecmp(rank_albums[ia], rank_albums[ib]);
+	int by_name = library_natural_casecmp(rank_albums[ia], rank_albums[ib]);
 	return by_name ? by_name : ia - ib;
 }
 

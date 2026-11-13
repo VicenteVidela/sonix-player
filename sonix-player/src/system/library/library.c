@@ -171,6 +171,9 @@ static const char *const SCHEMA[] = {
 
 	"CREATE TABLE IF NOT EXISTS VERSION_TABLE( version_id INT,PRIMARY KEY(version_id))",
 	"CREATE TABLE IF NOT EXISTS COUNT_TABLE( cn INT)",
+	// Which way the sort keys were written (SORTKEY_VERSION). No row means
+	// the first way, from before numbers sorted as numbers.
+	"CREATE TABLE IF NOT EXISTS SORTKEY_STATE(version INT)",
 };
 
 // Added to a database that predates them. CREATE TABLE IF NOT EXISTS leaves an
@@ -684,62 +687,21 @@ static int skip_article(const char *text, int length) {
 	return 0;
 }
 
-// The collation the schema names. Compares group first, then folded code
-// points, then length -- so the result is a total order and SQLite is happy.
-// Non-static: the audiobook database registers the very same ordering (see
-// library.h), so "The Hobbit" files under H there just as "The Beatles" files
-// under B here.
-int library_collate_listorder(void *unused, int len_a, const void *a, int len_b, const void *b) {
-	(void)unused;
-
-	const char *text_a = a;
-	const char *text_b = b;
-
-	int pos_a = skip_article(text_a, len_a);
-	int pos_b = skip_article(text_b, len_b);
-
-	uint32_t first_a = 0, first_b = 0;
-	int peek_a = pos_a, peek_b = pos_b;
-	first_a = utf8_next(text_a, len_a, &peek_a);
-	first_b = utf8_next(text_b, len_b, &peek_b);
-
-	sort_group_t group_a = sort_group_of(first_a);
-	sort_group_t group_b = sort_group_of(first_b);
-
-	if (group_a != group_b) {
-		return group_a < group_b ? -1 : 1;
-	}
-
-	for (;;) {
-		uint32_t code_a = utf8_next(text_a, len_a, &pos_a);
-		uint32_t code_b = utf8_next(text_b, len_b, &pos_b);
-
-		if (code_a == 0 || code_b == 0) {
-			if (code_a == code_b) {
-				return 0;
-			}
-			return code_a == 0 ? -1 : 1;
-		}
-
-		code_a = fold_case(code_a);
-		code_b = fold_case(code_b);
-
-		if (code_a != code_b) {
-			return code_a < code_b ? -1 : 1;
-		}
-	}
-}
-
 // The collation's order, written down as bytes.
 //
-// library_collate_listorder() above compares two things, in order: the script
-// group of the first character, then the folded code points one at a time.
-// Both go into a string whose plain byte order is that same order -- the group
-// as one printable digit, then the folded code points re-encoded as UTF-8,
-// whose byte order is code point order, which is exactly what the collation
-// compares. Where one string runs out first, memcmp over the shorter length
-// and then the lengths is the same answer the collation gives, and that is what
-// SQLite's BINARY collation does.
+// Two things are compared, in order: the script group of the first character,
+// then the folded characters one at a time -- except that a run of digits is
+// one number, so "Mega Man 2" comes before "Mega Man 10" and "Track 9" before
+// "Track 10" (Meloetta: natural order). Both go into a string whose plain byte
+// order is that order: the group as one printable digit, then the folded code
+// points re-encoded as UTF-8, whose byte order is code point order. A number
+// goes in as its digit count (one byte, '1' for one digit, '2' for two...) and
+// then its digits with the leading zeros dropped, so a shorter number is a
+// smaller one and two of one length compare digit by digit. The count byte
+// sits in the same range the digits did, so against a letter or a space a
+// number still sorts where a digit always has. Where one string runs out
+// first, memcmp over the shorter length and then the lengths is what SQLite's
+// BINARY collation does.
 //
 // So "ORDER BY sortkey" answers what "ORDER BY name COLLATE listorder" answers,
 // and an ordinary index can serve it. That is the whole point: the collation is
@@ -747,15 +709,20 @@ int library_collate_listorder(void *unused, int len_a, const void *a, int len_b,
 // it has to sort the entire table into a temporary b-tree before drawing a row.
 //
 // The key holds no zero byte and is never empty, so it stores as TEXT.
-void library_sort_key(const char *text, char *out, size_t out_size) {
+//
+// SORTKEY_VERSION says which way of writing the key a database holds; a card
+// whose keys were written the old way has them worked out again at open.
+#define SORTKEY_VERSION 2
+
+static void sort_key_n(const char *text, int length, char *out, size_t out_size) {
 	if (!out || out_size < 2) {
 		return;
 	}
 	if (!text) {
 		text = "";
+		length = 0;
 	}
 
-	int length = (int)strlen(text);
 	int pos = skip_article(text, length);
 
 	// The group of the first character, unfolded -- the collation looks at it
@@ -772,6 +739,32 @@ void library_sort_key(const char *text, char *out, size_t out_size) {
 		if (code == 0) {
 			break;
 		}
+
+		if (code >= '0' && code <= '9') {
+			// The whole run of digits, as one number. Digits are single bytes,
+			// so the run is read straight off the text.
+			int start = pos - 1;
+			while (pos < length && text[pos] >= '0' && text[pos] <= '9') {
+				pos++;
+			}
+			const char *digits = text + start;
+			int count = pos - start;
+			while (count > 1 && digits[0] == '0') {
+				digits++;
+				count--;
+			}
+			// Forty digits is past any number a tag holds; a longer one keeps
+			// the count of forty and compares by its digits from there.
+			int marker = count > 40 ? 40 : count;
+			if (at + 1 + (size_t)count >= out_size) {
+				break;
+			}
+			out[at++] = (char)('0' + marker);
+			memcpy(out + at, digits, (size_t)count);
+			at += (size_t)count;
+			continue;
+		}
+
 		code = fold_case(code);
 
 		char encoded[4];
@@ -787,6 +780,87 @@ void library_sort_key(const char *text, char *out, size_t out_size) {
 	}
 
 	out[at] = '\0';
+}
+
+void library_sort_key(const char *text, char *out, size_t out_size) {
+	sort_key_n(text, text ? (int)strlen(text) : 0, out, out_size);
+}
+
+// The collation the schema names: the two sort keys, compared as bytes and
+// then by length, so it is a total order, SQLite is happy, and it is the
+// stored key's order by construction rather than by keeping two pieces of
+// code in step. Non-static: the audiobook database registers the very same
+// ordering (see library.h), so "The Hobbit" files under H there just as "The
+// Beatles" files under B here.
+int library_collate_listorder(void *unused, int len_a, const void *a, int len_b, const void *b) {
+	(void)unused;
+
+	char key_a[LIBRARY_SORT_KEY_MAX];
+	char key_b[LIBRARY_SORT_KEY_MAX];
+	sort_key_n(a, len_a, key_a, sizeof(key_a));
+	sort_key_n(b, len_b, key_b, sizeof(key_b));
+
+	size_t size_a = strlen(key_a);
+	size_t size_b = strlen(key_b);
+	int order = memcmp(key_a, key_b, size_a < size_b ? size_a : size_b);
+	if (order) {
+		return order < 0 ? -1 : 1;
+	}
+	return size_a == size_b ? 0 : (size_a < size_b ? -1 : 1);
+}
+
+// Two names in natural order, for the folder lists, which sort file names in
+// C rather than through the database: case set aside (ASCII), and a run of
+// digits compared as the number it is, so "2 Song" comes before "10 Song".
+// Articles are not skipped -- a folder list shows names as they are on the card.
+int library_natural_casecmp(const char *a, const char *b) {
+	if (!a || !b) {
+		return a == b ? 0 : (a ? 1 : -1);
+	}
+	while (*a && *b) {
+		if (*a >= '0' && *a <= '9' && *b >= '0' && *b <= '9') {
+			const char *start_a = a, *start_b = b;
+			while (*a == '0' && a[1] >= '0' && a[1] <= '9') {
+				a++;
+			}
+			while (*b == '0' && b[1] >= '0' && b[1] <= '9') {
+				b++;
+			}
+			const char *digits_a = a, *digits_b = b;
+			while (*a >= '0' && *a <= '9') {
+				a++;
+			}
+			while (*b >= '0' && *b <= '9') {
+				b++;
+			}
+			long count_a = a - digits_a, count_b = b - digits_b;
+			if (count_a != count_b) {
+				return count_a < count_b ? -1 : 1;
+			}
+			int order = memcmp(digits_a, digits_b, (size_t)count_a);
+			if (order) {
+				return order < 0 ? -1 : 1;
+			}
+			// "01" and "1": the one with fewer leading zeros first, so the
+			// order stays total.
+			long zeros_a = digits_a - start_a, zeros_b = digits_b - start_b;
+			if (zeros_a != zeros_b) {
+				return zeros_a < zeros_b ? -1 : 1;
+			}
+			continue;
+		}
+		int ca = tolower((unsigned char)*a);
+		int cb = tolower((unsigned char)*b);
+		if (ca != cb) {
+			return ca < cb ? -1 : 1;
+		}
+		a++;
+		b++;
+	}
+	if (*a == *b) {
+		return 0;
+	}
+	return *a ? 1 : -1;
 }
 
 // sortkey(x) inside SQL, so a database written before the column existed can be
@@ -1291,6 +1365,38 @@ static void backfill_stop_and_wait(void) {
 
 // Whether the ordered query may name the key. Favourites never may: they have
 // no such column and are ordered by when they were starred, not by name.
+// Keys written an older way are cleared, so the backfill works them out again
+// the new way on this boot (sortkeys_start_backfill() finds them missing). The
+// sort indexes go first and are built again in one pass once the keys are back,
+// rather than kept up to date one row at a time through two full rewrites.
+static void sortkeys_upgrade(void) {
+	if (count_rows("SELECT IFNULL(MAX(version),1) FROM SORTKEY_STATE") >= SORTKEY_VERSION) {
+		return;
+	}
+	printf("library: sort keys are from an older version; working them out again\n");
+	static const char *const DROPS[] = {
+		"DROP INDEX IF EXISTS media_sort_idx",		  "DROP INDEX IF EXISTS media_genre_sort_idx",
+		"DROP INDEX IF EXISTS album_sort_idx",		  "DROP INDEX IF EXISTS album_group_sort_idx",
+		"DROP INDEX IF EXISTS artist_sort_idx",		  "DROP INDEX IF EXISTS album_artist_sort_idx",
+		"DROP INDEX IF EXISTS genre_sort_idx",
+	};
+	for (size_t i = 0; i < sizeof(DROPS) / sizeof(DROPS[0]); i++) {
+		exec(DROPS[i]);
+	}
+	bool cleared = true;
+	for (size_t i = 0; i < sizeof(KEYED_TABLES) / sizeof(KEYED_TABLES[0]); i++) {
+		char sql[128];
+		snprintf(sql, sizeof(sql), "UPDATE %s SET sortkey=NULL", KEYED_TABLES[i].table);
+		cleared = exec(sql) && cleared;
+	}
+	if (cleared) {
+		char sql[96];
+		exec("DELETE FROM SORTKEY_STATE");
+		snprintf(sql, sizeof(sql), "INSERT INTO SORTKEY_STATE(version) VALUES(%d)", SORTKEY_VERSION);
+		exec(sql);
+	}
+}
+
 static bool list_uses_sortkey(library_list_t kind) {
 	// Favourites run by when they were starred and a playlist by the order it
 	// was built, so neither has a sort key to read.
@@ -1396,6 +1502,8 @@ static bool db_open_file(const char *db_path) {
 		exec_quiet(SCHEMA_COLUMNS[i]);
 	}
 	index_steps(SCHEMA_INDEXES, sizeof(SCHEMA_INDEXES) / sizeof(SCHEMA_INDEXES[0]), "index");
+
+	sortkeys_upgrade();
 
 	album_groups_fill();
 	album_keys_fill();
@@ -2776,11 +2884,19 @@ static void list_sql(char *sql, size_t size, const char *select, library_list_t 
 	// a lookup and not a scan.
 	if (kind == LIBRARY_LIST_ALBUMS && col && value &&
 		(filter == LIBRARY_FILTER_ARTIST || filter == LIBRARY_FILTER_ALBUM_ARTIST || filter == LIBRARY_FILTER_GENRE)) {
+		// By year as well, when asked (Meloetta): a series' games in the order
+		// they came out, the records of one year by name.
+		const char *by_name = list_uses_sortkey(kind) ? "sortkey" : "album COLLATE listorder";
+		char by_year[320] = "";
+		if (order == LIBRARY_ORDER_YEAR || order == LIBRARY_ORDER_YEAR_DESC) {
+			snprintf(by_year, sizeof(by_year), "%s, ",
+					 order == LIBRARY_ORDER_YEAR ? YEAR_KEY_UP(ALBUM_GROUP_YEAR) : YEAR_KEY_DOWN(ALBUM_GROUP_YEAR));
+		}
 		snprintf(sql, size,
-				 "SELECT %s FROM ALBUM_GROUP_TABLE WHERE album <> ''"
+				 "SELECT %s FROM ALBUM_GROUP_TABLE g WHERE album <> ''"
 				 " AND (album, album_key) IN (SELECT album, album_key FROM MEDIA_TABLE WHERE %s)"
-				 " ORDER BY %s",
-				 select, filter_where(filter), list_uses_sortkey(kind) ? "sortkey" : "album COLLATE listorder");
+				 " ORDER BY %s%s",
+				 select, filter_where(filter), by_year, by_name);
 		return;
 	}
 

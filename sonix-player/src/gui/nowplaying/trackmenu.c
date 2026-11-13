@@ -33,6 +33,11 @@
 #include "src/system/streaming/qobuzcache.h"
 #include "src/system/streaming/tidalcache.h"
 #include "src/system/library/library.h"
+#include "src/system/library/playlists.h"
+#include "src/gui/shell/gui.h"
+#include <limits.h>
+#include <errno.h>
+#include <unistd.h>
 #include "src/system/playback/playlist.h"
 #include "src/system/core/utils.h"
 #include "src/system/device/system.h"
@@ -1719,6 +1724,66 @@ static void add_to_playlist_cb(void *user) {
 	switcher_set_player_return(playlistpage_screen);
 }
 
+// Meloetta: "Add to Recycle Bin", one tap, for the track that is playing.
+//
+// Two things happen. The track goes into the card's own Recycle Bin playlist,
+// so it shows there straight away. And its path, relative to the card, is
+// appended to <card>/_recycle/outbox.txt, which is what CL4P-TP reads over the
+// Wi-Fi transfer when /recycle-bin runs: it merges the paths into Navidrome's
+// Recycle Bin and moves the file aside, so each pick travels once. Nothing is
+// deleted here -- the Recycle Bin is only ever a list of candidates.
+#define RECYCLE_PLAYLIST "Recycle Bin"
+#define RECYCLE_DIR "_recycle"
+#define RECYCLE_OUTBOX "outbox.txt"
+
+static bool recycle_outbox_append(const char *root, const char *relative) {
+	char dir[PATH_MAX];
+	char file[PATH_MAX];
+	if (snprintf(dir, sizeof(dir), "%s/%s", root, RECYCLE_DIR) >= (int)sizeof(dir) ||
+		snprintf(file, sizeof(file), "%s/%s", dir, RECYCLE_OUTBOX) >= (int)sizeof(file)) {
+		return false;
+	}
+	if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
+		return false;
+	}
+	FILE *f = fopen(file, "a");
+	if (!f) {
+		return false;
+	}
+	bool ok = fprintf(f, "%s\n", relative) > 0;
+	ok = fflush(f) == 0 && ok;
+	// The card can be pulled at any moment; the line is on it before the
+	// toast says so.
+	fsync(fileno(f));
+	ok = fclose(f) == 0 && ok;
+	return ok;
+}
+
+static void recycle_cb(void *user) {
+	(void)user;
+	device_state_t state;
+	device_state_get(&state);
+	const char *path = state.current_file;
+	const char *root = storage_sd_root();
+	size_t root_len = root ? strlen(root) : 0;
+
+	// Only a file on the card: a stream or a download cache has no place in
+	// the server's library to be matched against.
+	if (!path[0] || !gui_card_available() || root_len == 0 || strncmp(path, root, root_len) != 0 ||
+		path[root_len] != '/' || podcastcache_is_episode(path) || qobuzcache_track_id(path) > 0 ||
+		tidalcache_track_id(path) > 0) {
+		gui_notify_popup("trackmenu_recycle_failed");
+		return;
+	}
+	if (playlists_has_track(RECYCLE_PLAYLIST, path)) {
+		gui_notify_popup("trackmenu_recycle_already");
+		return;
+	}
+	bool sent = recycle_outbox_append(root, path + root_len + 1);
+	bool listed = sent && playlists_add_track(RECYCLE_PLAYLIST, path);
+	gui_notify_popup(listed ? "trackmenu_recycle_done" : "trackmenu_recycle_failed");
+}
+
 // "Show album": the record the playing track came off. Backing out of it
 // returns to the player, like everything else this menu opens.
 static void open_album_cb(void *user) {
@@ -1833,6 +1898,7 @@ void trackmenu_open(lv_obj_t *anchor) {
 	static const popover_item_t ITEMS[] = {
 		{"trackmenu_queue", open_queue_cb, NULL},
 		{"add_to_playlist", add_to_playlist_cb, NULL},
+		{"trackmenu_recycle", recycle_cb, NULL},
 		{"show_album", open_album_cb, NULL},
 		{"details", open_details_cb, NULL},
 		{"settings", open_settings_cb, NULL},
@@ -1849,7 +1915,7 @@ void trackmenu_open(lv_obj_t *anchor) {
 	device_state_get(&state);
 	bool podcast = state.current_file[0] && podcastcache_is_episode(state.current_file);
 
-	popover_show(anchor, podcast ? ITEMS_PODCAST : ITEMS, 5);
+	popover_show(anchor, podcast ? ITEMS_PODCAST : ITEMS, podcast ? 5 : 6);
 }
 
 void trackmenu_init(gui_config_t *cfg) {

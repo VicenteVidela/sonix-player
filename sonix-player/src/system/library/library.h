@@ -504,6 +504,10 @@ char library_index_letter(const char *name);
 #define LIBRARY_SORT_KEY_MAX 512
 void library_sort_key(const char *name, char *out, size_t out_size);
 
+// Two names in natural order ("2" before "10"), case set aside, articles
+// kept: for the folder lists, which sort in C rather than in the database.
+int library_natural_casecmp(const char *a, const char *b);
+
 // The letter of the strip a key stands for: library_index_letter() answered
 // from the key instead of the name, which the key already carries.
 char library_index_letter_of_key(const char *key);

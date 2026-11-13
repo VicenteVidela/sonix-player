@@ -28,6 +28,7 @@
 #include "src/gui/shell/theme.h"
 #include "src/system/library/cue.h"
 #include "src/system/library/folderorder.h"
+#include "src/system/library/library.h"
 #include "src/system/playback/device_state.h"
 #include "src/gui/shell/toast.h"
 #include "src/system/playback/playlist.h"
@@ -249,7 +250,7 @@ static int entry_cmp(const void *a, const void *b) {
 	if (cue_order_tracks(fa, fb, &by_track)) {
 		return by_track;
 	}
-	return strcasecmp(fa, fb);
+	return library_natural_casecmp(fa, fb);
 }
 
 // ---------------------------------------------------------------------------

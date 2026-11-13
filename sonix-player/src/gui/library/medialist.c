@@ -487,37 +487,52 @@ bool medialist_quality_badges(void) {
 	return quality_badges;
 }
 
-static bool sort_is_desc(library_list_t kind) { return (sort_desc_mask & (1u << (unsigned)kind)) != 0; }
+// A series', an artist's or a genre's own records: the middle list of a walk,
+// sortable by name or by year (Meloetta) and remembered apart from the full
+// Albums list, so going by year inside a series leaves that one alone.
+static bool sort_albums_within(library_list_t kind, library_filter_t filter) {
+	return kind == LIBRARY_LIST_ALBUMS && (filter == LIBRARY_FILTER_ARTIST || filter == LIBRARY_FILTER_ALBUM_ARTIST ||
+										   filter == LIBRARY_FILTER_GENRE);
+}
 
-static void sort_set_desc(library_list_t kind, bool desc) {
+// Which bit of the sort masks a list's choice is kept in: its kind's, or for
+// the records within a series the top bit, which no kind reaches.
+#define SORT_SLOT_ALBUMS_WITHIN 31u
+static unsigned sort_slot(library_list_t kind, library_filter_t filter) {
+	return sort_albums_within(kind, filter) ? SORT_SLOT_ALBUMS_WITHIN : (unsigned)kind;
+}
+
+static bool sort_is_desc(unsigned slot) { return (sort_desc_mask & (1u << slot)) != 0; }
+
+static void sort_set_desc(unsigned slot, bool desc) {
 	if (desc) {
-		sort_desc_mask |= 1u << (unsigned)kind;
+		sort_desc_mask |= 1u << slot;
 	} else {
-		sort_desc_mask &= ~(1u << (unsigned)kind);
+		sort_desc_mask &= ~(1u << slot);
 	}
 	config_set_int("library", "sort_desc", (long)sort_desc_mask);
 	config_save();
 }
 
-static bool sort_is_added(library_list_t kind) { return (sort_added_mask & (1u << (unsigned)kind)) != 0; }
+static bool sort_is_added(unsigned slot) { return (sort_added_mask & (1u << slot)) != 0; }
 
-static void sort_set_added(library_list_t kind, bool added) {
+static void sort_set_added(unsigned slot, bool added) {
 	if (added) {
-		sort_added_mask |= 1u << (unsigned)kind;
+		sort_added_mask |= 1u << slot;
 	} else {
-		sort_added_mask &= ~(1u << (unsigned)kind);
+		sort_added_mask &= ~(1u << slot);
 	}
 	config_set_int("library", "sort_added", (long)sort_added_mask);
 	config_save();
 }
 
-static bool sort_is_year(library_list_t kind) { return (sort_year_mask & (1u << (unsigned)kind)) != 0; }
+static bool sort_is_year(unsigned slot) { return (sort_year_mask & (1u << slot)) != 0; }
 
-static void sort_set_year(library_list_t kind, bool year) {
+static void sort_set_year(unsigned slot, bool year) {
 	if (year) {
-		sort_year_mask |= 1u << (unsigned)kind;
+		sort_year_mask |= 1u << slot;
 	} else {
-		sort_year_mask &= ~(1u << (unsigned)kind);
+		sort_year_mask &= ~(1u << slot);
 	}
 	config_set_int("library", "sort_year", (long)sort_year_mask);
 	config_save();
@@ -538,7 +553,8 @@ static bool sort_can_date(library_list_t kind, library_filter_t filter) {
 // artist has no year of their own -- the first record and the last are both
 // fair answers -- so the name lists stay out.
 static bool sort_can_year(library_list_t kind, library_filter_t filter) {
-	return (kind == LIBRARY_LIST_TRACKS || kind == LIBRARY_LIST_ALBUMS) && filter == LIBRARY_FILTER_NONE;
+	return ((kind == LIBRARY_LIST_TRACKS || kind == LIBRARY_LIST_ALBUMS) && filter == LIBRARY_FILTER_NONE) ||
+		   sort_albums_within(kind, filter);
 }
 
 // The order a list is opened with, and whether the handle reads it backwards.
@@ -546,11 +562,12 @@ static bool sort_can_year(library_list_t kind, library_filter_t filter) {
 // database runs it either way itself, so the rows without a year stay at the
 // end in both.
 static void sort_order_for(library_list_t kind, library_filter_t filter, library_order_t *order, bool *desc) {
-	bool reversed = sort_is_desc(kind);
-	if (sort_can_year(kind, filter) && sort_is_year(kind)) {
+	unsigned slot = sort_slot(kind, filter);
+	bool reversed = sort_is_desc(slot);
+	if (sort_can_year(kind, filter) && sort_is_year(slot)) {
 		*order = reversed ? LIBRARY_ORDER_YEAR_DESC : LIBRARY_ORDER_YEAR;
 		*desc = false;
-	} else if (sort_can_date(kind, filter) && sort_is_added(kind)) {
+	} else if (sort_can_date(kind, filter) && sort_is_added(slot)) {
 		*order = LIBRARY_ORDER_ADDED;
 		*desc = reversed;
 	} else {
@@ -2474,10 +2491,14 @@ static void reorder_icon_paint(panel_t *p) {
 }
 
 // Whether this panel's list runs by date rather than by name.
-static bool sort_by_date(const panel_t *p) { return sort_can_date(p->kind, p->filter) && sort_is_added(p->kind); }
+static bool sort_by_date(const panel_t *p) {
+	return sort_can_date(p->kind, p->filter) && sort_is_added(sort_slot(p->kind, p->filter));
+}
 
 // Whether it runs by release year.
-static bool sort_by_year(const panel_t *p) { return sort_can_year(p->kind, p->filter) && sort_is_year(p->kind); }
+static bool sort_by_year(const panel_t *p) {
+	return sort_can_year(p->kind, p->filter) && sort_is_year(sort_slot(p->kind, p->filter));
+}
 
 // The sort button's glyph says how the list runs now: by name, by date or by
 // year, and which way. By name and by date the arrow points the way the list
@@ -2487,7 +2508,7 @@ static void sort_icon_paint(panel_t *p) {
 	if (!p->sort_icon) {
 		return;
 	}
-	bool desc = sort_is_desc(p->kind);
+	bool desc = sort_is_desc(sort_slot(p->kind, p->filter));
 	if (sort_by_year(p)) {
 		lv_image_set_src(p->sort_icon, desc ? &icon_sort_year_desc : &icon_sort_year_asc);
 	} else if (sort_by_date(p)) {
@@ -3030,9 +3051,10 @@ static void sort_picked(void *user) {
 		return;
 	}
 	sort_choice_t choice = (sort_choice_t)(intptr_t)user;
-	sort_set_added(p->kind, choice == SORT_ADDED_NEW || choice == SORT_ADDED_OLD);
-	sort_set_year(p->kind, choice == SORT_YEAR_UP || choice == SORT_YEAR_DOWN);
-	sort_set_desc(p->kind, choice == SORT_NAME_ZA || choice == SORT_ADDED_NEW || choice == SORT_YEAR_DOWN);
+	unsigned slot = sort_slot(p->kind, p->filter);
+	sort_set_added(slot, choice == SORT_ADDED_NEW || choice == SORT_ADDED_OLD);
+	sort_set_year(slot, choice == SORT_YEAR_UP || choice == SORT_YEAR_DOWN);
+	sort_set_desc(slot, choice == SORT_NAME_ZA || choice == SORT_ADDED_NEW || choice == SORT_YEAR_DOWN);
 	reload_current(p);
 }
 
@@ -3041,15 +3063,19 @@ static void sort_clicked_cb(lv_event_t *e) {
 	if (!p) {
 		return;
 	}
+	unsigned slot = sort_slot(p->kind, p->filter);
+	bool can_date = sort_can_date(p->kind, p->filter);
+	bool can_year = sort_can_year(p->kind, p->filter);
+
 	// A name list has one other way to run, so the button just flips to it: a
 	// menu with two entries would be a slower way of doing the same.
-	if (!sort_can_date(p->kind, p->filter)) {
-		sort_set_desc(p->kind, !sort_is_desc(p->kind));
+	if (!can_date && !can_year) {
+		sort_set_desc(slot, !sort_is_desc(slot));
 		reload_current(p);
 		return;
 	}
 
-	bool desc = sort_is_desc(p->kind);
+	bool desc = sort_is_desc(slot);
 	sort_choice_t current = desc ? SORT_NAME_ZA : SORT_NAME_AZ;
 	if (sort_by_year(p)) {
 		current = desc ? SORT_YEAR_DOWN : SORT_YEAR_UP;
@@ -3062,10 +3088,17 @@ static void sort_clicked_cb(lv_event_t *e) {
 		[SORT_ADDED_NEW] = "medialist_sort_added_new", [SORT_ADDED_OLD] = "medialist_sort_added_old",
 		[SORT_YEAR_UP] = "medialist_sort_year_up",	   [SORT_YEAR_DOWN] = "medialist_sort_year_down",
 	};
-	int n = sort_can_year(p->kind, p->filter) ? SORT_CHOICES : SORT_YEAR_UP;
+	// The choices this list has: by name always, by date and by year where
+	// it has them -- a series' records go by name or by year, not by date.
 	popover_item_t items[SORT_CHOICES];
-	for (int i = 0; i < n; i++) {
-		items[i] = (popover_item_t){labels[i], sort_picked, (void *)(intptr_t)i, i == (int)current};
+	int n = 0;
+	for (int i = 0; i < SORT_CHOICES; i++) {
+		bool dated = i == SORT_ADDED_NEW || i == SORT_ADDED_OLD;
+		bool yearly = i == SORT_YEAR_UP || i == SORT_YEAR_DOWN;
+		if ((dated && !can_date) || (yearly && !can_year)) {
+			continue;
+		}
+		items[n++] = (popover_item_t){labels[i], sort_picked, (void *)(intptr_t)i, i == (int)current};
 	}
 	sort_menu_panel = p;
 	popover_show(lv_event_get_current_target(e), items, n);
@@ -4957,7 +4990,7 @@ void medialist_open(const char *title, library_list_t kind, library_filter_t fil
 		artist_albums && (filter == LIBRARY_FILTER_ARTIST || filter == LIBRARY_FILTER_ALBUM_ARTIST);
 	bool sortable = (kind == LIBRARY_LIST_TRACKS && filter == LIBRARY_FILTER_NONE) ||
 					(kind == LIBRARY_LIST_ALBUMS && !artist_albums) || kind == LIBRARY_LIST_ARTISTS ||
-					kind == LIBRARY_LIST_ALBUM_ARTISTS;
+					kind == LIBRARY_LIST_ALBUM_ARTISTS || sort_albums_within(kind, filter);
 
 	bool want_album = artist_tracks || artist_records_page;
 	// The circle-play menu, wherever "play all of this" is a question worth
@@ -5073,7 +5106,7 @@ void medialist_open(const char *title, library_list_t kind, library_filter_t fil
 	p->index_wanted = !by_date && ((kind == LIBRARY_LIST_TRACKS && filter == LIBRARY_FILTER_NONE) ||
 								   (kind == LIBRARY_LIST_ALBUMS && !artist_albums) || kind == LIBRARY_LIST_ARTISTS ||
 								   kind == LIBRARY_LIST_ALBUM_ARTISTS);
-	index_rebuild(p, p->index_wanted, sortable && sort_is_desc(kind));
+	index_rebuild(p, p->index_wanted, sortable && sort_is_desc(sort_slot(kind, filter)));
 
 	// The list's real height before anything is worked out from it. Until its
 	// screen has been shown once nothing has laid it out, and the height LVGL
